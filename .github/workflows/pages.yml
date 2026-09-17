@@ -8,6 +8,12 @@ name: Pages
 on:
   push:
     branches: [main]
+    # 文書だけの変更では公開し直さない（要望・意見の追記で毎回走らせないため）
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.kiro/**'
+      - '.github/ISSUE_TEMPLATE/**'
   workflow_dispatch:
 
 permissions:
