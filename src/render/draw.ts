@@ -1,6 +1,6 @@
 import { CONFIG } from '../sim/config';
-import { modeOf } from '../sim/modes';
-import type { ModeId, SimState } from '../sim/types';
+import type { SimState } from '../sim/types';
+import { createCharacterRenderer } from './characters';
 import type { View } from './view';
 
 /** 設置プレビュー。指の位置に何が起きるかを事前に見せる */
@@ -16,69 +16,6 @@ export interface Preview {
   showCounts: boolean;
 }
 
-interface Rgb {
-  r: number;
-  g: number;
-  b: number;
-}
-
-function rgba({ r, g, b }: Rgb, a: number): string {
-  return `rgba(${r},${g},${b},${a})`;
-}
-
-function hexToRgb(hex: string): Rgb {
-  const v = hex.replace('#', '');
-  return {
-    r: parseInt(v.slice(0, 2), 16),
-    g: parseInt(v.slice(2, 4), 16),
-    b: parseInt(v.slice(4, 6), 16),
-  };
-}
-
-interface Palette {
-  susceptible: Rgb;
-  infected: Rgb;
-  recovered: Rgb;
-}
-
-/** モードごとの配色。毎フレーム作り直さないよう覚えておく */
-const paletteCache = new Map<ModeId, Palette>();
-
-function paletteOf(mode: ModeId): Palette {
-  const cached = paletteCache.get(mode);
-  if (cached) return cached;
-  const c = modeOf(mode).colors;
-  const p: Palette = {
-    susceptible: hexToRgb(c.susceptible),
-    infected: hexToRgb(c.infected),
-    recovered: hexToRgb(c.recovered),
-  };
-  paletteCache.set(mode, p);
-  return p;
-}
-
-/**
- * ぼかしたグロー画像を1枚だけ作って使い回す。
- * agent ごとに shadowBlur や createRadialGradient を呼ぶと、
- * 感染者が増えたときにスマートフォンで目に見えて重くなる。
- */
-function makeGlowSprite(color: Rgb, size: number): HTMLCanvasElement | null {
-  if (typeof document === 'undefined') return null;
-  const c = document.createElement('canvas');
-  c.width = size;
-  c.height = size;
-  const g = c.getContext('2d');
-  if (!g) return null;
-  const half = size / 2;
-  const grad = g.createRadialGradient(half, half, 0, half, half, half);
-  grad.addColorStop(0, rgba(color, 0.55));
-  grad.addColorStop(0.4, rgba(color, 0.22));
-  grad.addColorStop(1, rgba(color, 0));
-  g.fillStyle = grad;
-  g.fillRect(0, 0, size, size);
-  return c;
-}
-
 export interface Renderer {
   draw(
     ctx: CanvasRenderingContext2D,
@@ -92,15 +29,7 @@ export interface Renderer {
 }
 
 export function createRenderer(): Renderer {
-  const glowSize = 96;
-  /** グローはモードごとに色が違うので、必要になった時点で作って覚えておく */
-  const glowCache = new Map<ModeId, HTMLCanvasElement | null>();
-  function glowFor(mode: ModeId): HTMLCanvasElement | null {
-    if (!glowCache.has(mode)) {
-      glowCache.set(mode, makeGlowSprite(paletteOf(mode).infected, glowSize));
-    }
-    return glowCache.get(mode) ?? null;
-  }
+  const characters = createCharacterRenderer();
 
   function drawField(
     ctx: CanvasRenderingContext2D,
@@ -191,80 +120,13 @@ export function createRenderer(): Renderer {
     ctx.stroke();
   }
 
+  /**
+   * 人の描画は characters.ts に委ねる。
+   * 伝播中の人の背後のグローもあちらに含まれるため、ここでは何も描かない。
+   */
   function drawAgents(ctx: CanvasRenderingContext2D, state: SimState, view: View): void {
     const r = Math.max(2.2, CONFIG.agentRadius * view.scale);
-    const pal = paletteOf(state.mode);
-    const infectedGlow = glowFor(state.mode);
-
-    // 感染者のグロー（背面にまとめて描く）。
-    // 変異株が出ているあいだは大きく強く光らせ、盤面を見ただけで異変が伝わるようにする
-    if (infectedGlow) {
-      const hot = Math.min(2, state.transmissionMul);
-      const size = r * 7 * (1 + (hot - 1) * 0.75);
-      ctx.save();
-      ctx.globalAlpha = Math.min(1, 0.75 + (hot - 1) * 0.5);
-      for (const a of state.agents) {
-        if (a.state !== 'infected') continue;
-        const cx = view.ox + a.x * view.scale;
-        const cy = view.oy + a.y * view.scale;
-        ctx.drawImage(infectedGlow, cx - size / 2, cy - size / 2, size, size);
-      }
-      ctx.restore();
-    }
-
-    for (const a of state.agents) {
-      const cx = view.ox + a.x * view.scale;
-      const cy = view.oy + a.y * view.scale;
-
-      if (a.state === 'susceptible') {
-        ctx.fillStyle = rgba(pal.susceptible, 0.95);
-      } else if (a.state === 'infected') {
-        ctx.fillStyle = rgba(pal.infected, 1);
-      } else {
-        // 耐性が切れかけている人は未感染の色に寄せ、また広がりうることを示す
-        const left = Math.min(1, a.immunity / 4);
-        ctx.fillStyle = rgba(
-          {
-            r: Math.round(pal.recovered.r + (pal.susceptible.r - pal.recovered.r) * (1 - left)),
-            g: Math.round(pal.recovered.g + (pal.susceptible.g - pal.recovered.g) * (1 - left)),
-            b: Math.round(pal.recovered.b + (pal.susceptible.b - pal.recovered.b) * (1 - left)),
-          },
-          0.8,
-        );
-      }
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 感染しかけていることを縁の弧で見せる。危ない接触が目で分かる
-      if (a.state === 'susceptible' && a.exposure > 0.12) {
-        const ratio = Math.min(1, a.exposure / CONFIG.exposureThreshold);
-        ctx.strokeStyle = `rgba(255,45,85,${0.35 + 0.5 * ratio})`;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(cx, cy, r + 2.5, -Math.PI / 2, -Math.PI / 2 + ratio * Math.PI * 2);
-        ctx.stroke();
-      }
-
-      // ワクチンによる免疫
-      if (a.immunity > 0) {
-        const fade = Math.min(1, a.immunity / 2.5);
-        ctx.strokeStyle = `rgba(250,204,21,${0.85 * fade})`;
-        ctx.lineWidth = 1.8;
-        ctx.beginPath();
-        ctx.arc(cx, cy, r + 3.5, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-
-      // 状態が変わった瞬間の白い波紋
-      if (a.flash > 0) {
-        ctx.strokeStyle = `rgba(255,255,255,${a.flash * 0.7})`;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(cx, cy, r + (1 - a.flash) * r * 4, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-    }
+    characters.drawAgents(ctx, state.agents, view, r, state.mode, state.transmissionMul);
   }
 
   function drawPulses(ctx: CanvasRenderingContext2D, state: SimState, view: View): void {
