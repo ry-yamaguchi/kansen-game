@@ -144,6 +144,32 @@ function recount(state: SimState): void {
   if (i > state.peakInfected) state.peakInfected = i;
 }
 
+/** 移動と、フレームごとに寿命が減る値の更新 */
+function moveAgents(state: SimState, dt: number): void {
+  const globalSpeed = state.lockdownTimer > 0 ? CONFIG.lockdownSpeedFactor : 1;
+  for (const a of state.agents) {
+    a.dir += rand(-CONFIG.turnRate, CONFIG.turnRate) * dt;
+    const mul = globalSpeed * (a.zone >= 0 ? CONFIG.zoneSpeedFactor : 1);
+    const v = a.speed * mul;
+    a.x += Math.cos(a.dir) * v * dt;
+    a.y += Math.sin(a.dir) * v * dt;
+    bounceWorld(a, state.world);
+    applyZoneBounds(a, state);
+    if (a.flash > 0) a.flash = Math.max(0, a.flash - dt * 1.6);
+    if (a.immunity > 0) a.immunity = Math.max(0, a.immunity - dt);
+    a.contacts = 0;
+    a.load = 0;
+  }
+}
+
+/**
+ * 開始前の待機画面用。人だけを動かし、感染も時間も進めない。
+ * 止まった画面より、動いている画面のほうが何のゲームか伝わる。
+ */
+export function drift(state: SimState, dt: number): void {
+  moveAgents(state, dt);
+}
+
 /** 固定タイムステップで 1 ステップ進める（dt は 1/60 前後を想定） */
 export function step(state: SimState, dt: number): void {
   state.time += dt;
@@ -170,22 +196,7 @@ export function step(state: SimState, dt: number): void {
     if (p.age >= p.ttl) state.pulses.splice(i, 1);
   }
 
-  const globalSpeed = state.lockdownTimer > 0 ? CONFIG.lockdownSpeedFactor : 1;
-
-  // --- 移動 ---
-  for (const a of state.agents) {
-    a.dir += rand(-CONFIG.turnRate, CONFIG.turnRate) * dt;
-    const mul = globalSpeed * (a.zone >= 0 ? CONFIG.zoneSpeedFactor : 1);
-    const v = a.speed * mul;
-    a.x += Math.cos(a.dir) * v * dt;
-    a.y += Math.sin(a.dir) * v * dt;
-    bounceWorld(a, state.world);
-    applyZoneBounds(a, state);
-    if (a.flash > 0) a.flash = Math.max(0, a.flash - dt * 1.6);
-    if (a.immunity > 0) a.immunity = Math.max(0, a.immunity - dt);
-    a.contacts = 0;
-    a.load = 0;
-  }
+  moveAgents(state, dt);
 
   // --- 接触判定（感染者 × 未感染者） ---
   state.links.length = 0;
@@ -328,16 +339,31 @@ export function previewCounts(
 
 // --- 結果 -------------------------------------------------------------
 
+/** 一度も感染しなかった人数 */
+export function countProtected(state: SimState): number {
+  let n = 0;
+  for (const a of state.agents) if (!a.everInfected) n += 1;
+  return n;
+}
+
+/**
+ * スコア。守れた人数を主軸に、余ったポイントを少し加点し、
+ * 最大同時感染者数を減点する。プレイ中の実況表示にも使う。
+ */
+export function scoreOf(state: SimState): number {
+  const protectedCount = countProtected(state);
+  return Math.max(
+    0,
+    Math.round(protectedCount * 100 + Math.floor(state.points) * 2 - state.peakInfected * 20),
+  );
+}
+
 export function buildResult(state: SimState): GameResult {
   const population = state.agents.length;
-  let protectedCount = 0;
-  for (const a of state.agents) if (!a.everInfected) protectedCount += 1;
+  const protectedCount = countProtected(state);
   const infectionRate = (population - protectedCount) / population;
   const pointsLeft = Math.floor(state.points);
-  const score = Math.max(
-    0,
-    Math.round(protectedCount * 100 + pointsLeft * 2 - state.peakInfected * 20),
-  );
+  const score = scoreOf(state);
 
   // 画面に出る文言なので「です・ます」調で、次にとれる行動を添える
   let rank: GameResult['rank'] = 'D';
