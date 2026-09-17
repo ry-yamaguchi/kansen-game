@@ -62,6 +62,15 @@ export interface World {
  */
 export type Phase = 'ready' | 'countdown' | 'playing' | 'finished';
 
+/**
+ * 決着の付き方。
+ * - timeup: 制限時間まで持ちこたえた
+ * - collapsed: 同時感染率が限界を超えて打ち切られた
+ *
+ * 伝播が0になっても終わらない。終わりはこの2つだけである。
+ */
+export type Outcome = 'playing' | 'timeup' | 'collapsed';
+
 /** 画面に出す短い通知（ウェーブの発生など） */
 export interface Notice {
   id: number;
@@ -72,6 +81,32 @@ export interface Notice {
 
 export type ToolId = 'isolation' | 'vaccine' | 'lockdown';
 
+export type ModeId = 'epidemic' | 'rumor' | 'anger';
+
+/**
+ * モードごとに差し替える数値。
+ * 色と呼び名だけを変えても別のゲームにはならないため、
+ * 伝わり方そのものをここで変える。
+ */
+export interface Tuning {
+  /** 接触と判定する距離。噂は遠くまで届く */
+  contactRadius: number;
+  /** 1秒あたりの感染圧 */
+  exposureGain: number;
+  /** 伝播している状態が続く秒数 */
+  spreadMin: number;
+  spreadMax: number;
+  /** 収まったあと、また広がりうる状態に戻るまでの秒数 */
+  resistanceDuration: number;
+  speedMin: number;
+  speedMax: number;
+  turnRate: number;
+  /** 伝播中の人の移動速度倍率。怒っている人は速い */
+  activeSpeedMul: number;
+  /** 伝播中の人の方向転換のしやすさ。怒っている人は直進する */
+  activeTurnMul: number;
+}
+
 export interface ActionCounts {
   isolation: number;
   vaccine: number;
@@ -79,6 +114,8 @@ export interface ActionCounts {
 }
 
 export interface SimState {
+  mode: ModeId;
+  tuning: Tuning;
   world: World;
   agents: Agent[];
   zones: IsolationZone[];
@@ -135,6 +172,8 @@ export interface SimState {
   healthySeconds: number;
   /** 社会活動度（0..1に正規化）の積分（秒） */
   socialSeconds: number;
+
+  outcome: Outcome;
 }
 
 export interface GameResult {
@@ -149,6 +188,9 @@ export interface GameResult {
   /** 平均社会活動度（0..1） */
   avgSocial: number;
   peakInfected: number;
+  outcome: Outcome;
+  /** 打ち切られた場合、何秒もったか */
+  survivedSeconds: number;
   /** 最後に残っていた感染者数 */
   finalInfected: number;
   /** のべ感染者数 */
@@ -158,8 +200,14 @@ export interface GameResult {
   actions: ActionCounts;
   pointsLeft: number;
   pointsSpent: number;
-  /** スコアの内訳 */
-  breakdown: { protection: number; social: number; peakPenalty: number; points: number };
+  /** スコアの内訳。掛け算で出すため、係数は 0..1 で持つ */
+  breakdown: {
+    base: number;
+    protectionFactor: number;
+    socialFactor: number;
+    peakFactor: number;
+    pointsBonus: number;
+  };
   score: number;
   rank: 'S' | 'A' | 'B' | 'C' | 'D';
   verdict: string;

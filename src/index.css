@@ -17,6 +17,14 @@
   box-sizing: border-box;
 }
 
+/*
+ * 基準の文字サイズ。ここを上げると rem 指定の全体が連動して大きくなる。
+ * 盤面と取り合いになるので、上げすぎると狭い画面で盤面が潰れる。
+ */
+html {
+  font-size: 118.75%;
+}
+
 html,
 body {
   margin: 0;
@@ -85,14 +93,14 @@ body {
 }
 
 .timer__value {
-  font-size: clamp(1.8rem, 6vw, 2.6rem);
+  font-size: clamp(2.1rem, 7vw, 3rem);
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.02em;
 }
 
 .timer__unit {
-  font-size: 0.8rem;
+  font-size: 0.92rem;
   color: var(--muted);
 }
 
@@ -144,12 +152,12 @@ body {
 }
 
 .stat__label {
-  font-size: 0.7rem;
+  font-size: 0.82rem;
   color: var(--muted);
 }
 
 .stat__value {
-  font-size: clamp(0.95rem, 3.4vw, 1.2rem);
+  font-size: clamp(1.1rem, 4vw, 1.4rem);
   font-weight: 700;
 }
 
@@ -165,14 +173,14 @@ body {
 }
 
 .score__label {
-  font-size: 0.65rem;
+  font-size: 0.77rem;
   color: var(--muted);
 }
 
 .score__value {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
-  font-size: clamp(1rem, 3.6vw, 1.35rem);
+  font-size: clamp(1.15rem, 4.2vw, 1.55rem);
   font-weight: 700;
 }
 
@@ -189,7 +197,7 @@ body {
 }
 
 .points__label {
-  font-size: 0.68rem;
+  font-size: 0.8rem;
   color: var(--muted);
   white-space: nowrap;
 }
@@ -198,7 +206,7 @@ body {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 1.05rem;
   min-width: 2.4em;
   text-align: right;
 }
@@ -229,7 +237,7 @@ body {
 }
 
 .social__label {
-  font-size: 0.68rem;
+  font-size: 0.8rem;
   color: var(--muted);
   white-space: nowrap;
 }
@@ -238,7 +246,7 @@ body {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 1.05rem;
   min-width: 2.2em;
   text-align: right;
 }
@@ -306,7 +314,7 @@ body {
 }
 
 .notice__title {
-  font-size: clamp(0.85rem, 3.2vw, 1rem);
+  font-size: clamp(0.97rem, 3.6vw, 1.15rem);
 }
 
 .notice--bad .notice__title {
@@ -318,7 +326,7 @@ body {
 }
 
 .notice__detail {
-  font-size: 0.72rem;
+  font-size: 0.84rem;
   color: var(--muted);
 }
 
@@ -333,6 +341,61 @@ body {
   height: 100%;
   background: linear-gradient(90deg, #f97316, var(--danger));
   transition: width 0.18s linear;
+}
+
+/* ---------- 継続中の効果 ---------- */
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding-top: 2px;
+}
+
+.badge {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.badge--bad {
+  color: #ffc9d4;
+  border-color: rgba(255, 45, 85, 0.55);
+  background: rgba(255, 45, 85, 0.12);
+  animation: badgePulse 1.6s ease-in-out infinite;
+}
+
+.badge--warn {
+  color: #fed7aa;
+  border-color: rgba(251, 146, 60, 0.55);
+  background: rgba(251, 146, 60, 0.12);
+}
+
+.badge--info {
+  color: #bfdbfe;
+  border-color: rgba(96, 165, 250, 0.55);
+  background: rgba(96, 165, 250, 0.12);
+}
+
+.badge--zone {
+  color: #fde0b0;
+  border-color: rgba(255, 179, 71, 0.5);
+  background: rgba(255, 179, 71, 0.1);
+}
+
+@keyframes badgePulse {
+  50% {
+    border-color: rgba(255, 45, 85, 0.95);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .badge--bad {
+    animation: none;
+  }
 }
 
 /* ---------- 盤面 ---------- */
@@ -375,7 +438,7 @@ body {
   border-radius: 999px;
   background: rgba(11, 18, 32, 0.94);
   border: 1px solid var(--line);
-  font-size: 0.8rem;
+  font-size: 0.92rem;
   text-align: center;
   animation: toast 0.2s ease-out;
 }
@@ -410,7 +473,7 @@ body {
 .countdown__value {
   display: block;
   font-family: var(--mono);
-  font-size: clamp(3.5rem, 16vw, 7rem);
+  font-size: clamp(4rem, 18vw, 8rem);
   font-weight: 700;
   line-height: 1;
   color: var(--safe);
@@ -430,7 +493,7 @@ body {
 }
 
 .countdown__hint {
-  font-size: 0.82rem;
+  font-size: 0.94rem;
   color: #c7d2e1;
   background: rgba(5, 8, 15, 0.75);
   padding: 5px 12px;
@@ -487,19 +550,19 @@ body {
 }
 
 .action__name {
-  font-size: clamp(0.78rem, 2.9vw, 0.95rem);
+  font-size: clamp(0.9rem, 3.3vw, 1.08rem);
   font-weight: 700;
 }
 
 .action__cost {
   font-family: var(--mono);
-  font-size: 0.8rem;
+  font-size: 0.92rem;
   font-weight: 700;
   color: var(--muted);
 }
 
 .action__hint {
-  font-size: 0.66rem;
+  font-size: 0.78rem;
   color: var(--muted);
   line-height: 1.35;
 }
@@ -535,7 +598,7 @@ body {
 }
 
 .action__ready {
-  font-size: 0.64rem;
+  font-size: 0.76rem;
   color: var(--zone);
 }
 
@@ -546,7 +609,7 @@ body {
 .action__cool {
   position: relative;
   font-family: var(--mono);
-  font-size: 0.66rem;
+  font-size: 0.78rem;
   color: var(--lockdown);
 }
 
@@ -585,7 +648,7 @@ body {
 .panel__eyebrow {
   margin: 0 0 4px;
   font-family: var(--mono);
-  font-size: 0.7rem;
+  font-size: 0.82rem;
   letter-spacing: 0.16em;
   color: var(--safe);
   text-transform: uppercase;
@@ -593,19 +656,19 @@ body {
 
 .panel__title {
   margin: 0 0 10px;
-  font-size: clamp(1.15rem, 4.5vw, 1.5rem);
+  font-size: clamp(1.32rem, 5vw, 1.72rem);
 }
 
 .panel__lead {
   margin: 0 0 14px;
-  font-size: 0.85rem;
+  font-size: 0.96rem;
   line-height: 1.65;
   color: #c7d2e1;
 }
 
 .panel__note {
   margin: 14px 0 18px;
-  font-size: 0.76rem;
+  font-size: 0.88rem;
   line-height: 1.6;
   color: var(--muted);
   border-left: 2px solid var(--line);
@@ -628,10 +691,72 @@ body {
   color: var(--recovered);
 }
 
+/* ---------- モード選択 ---------- */
+
+.modes {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 14px;
+}
+
+.mode {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    'dots name'
+    'dots tag';
+  align-items: center;
+  gap: 1px 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(5, 8, 15, 0.5);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.mode:focus-visible {
+  outline: 2px solid var(--safe);
+  outline-offset: 2px;
+}
+
+.mode.is-selected {
+  border-color: var(--safe);
+  background: rgba(45, 212, 191, 0.1);
+}
+
+.mode__dots {
+  grid-area: dots;
+  display: flex;
+  gap: 3px;
+}
+
+.mode__dots i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.mode__name {
+  grid-area: name;
+  font-weight: 700;
+  font-size: 0.98rem;
+}
+
+.mode__tag {
+  grid-area: tag;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .howto {
   margin: 0;
   padding-left: 1.3em;
-  font-size: 0.82rem;
+  font-size: 0.94rem;
   line-height: 1.9;
   color: #c7d2e1;
 }
@@ -644,7 +769,7 @@ body {
   background: linear-gradient(135deg, var(--safe), #38bdf8);
   color: #04121a;
   font: inherit;
-  font-size: 1rem;
+  font-size: 1.12rem;
   font-weight: 700;
   cursor: pointer;
 }
@@ -663,7 +788,7 @@ body {
 .verdict {
   margin: 0 0 6px;
   font-family: var(--mono);
-  font-size: 0.72rem;
+  font-size: 0.84rem;
   font-weight: 700;
   letter-spacing: 0.18em;
 }
@@ -692,7 +817,7 @@ body {
   list-style: none;
   margin: 0 0 16px;
   padding: 0;
-  font-size: 0.72rem;
+  font-size: 0.84rem;
   color: var(--muted);
 }
 
@@ -708,12 +833,24 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* 足を引っ張っている項目を目立たせ、なぜ低いのか分かるようにする */
+.breakdown li.is-weak {
+  color: #ffc9d4;
+}
+
+.breakdown__note {
+  margin: -8px 0 16px;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
 .rank {
   position: absolute;
   top: clamp(12px, 3vw, 20px);
   right: clamp(14px, 4vw, 24px);
   font-family: var(--mono);
-  font-size: clamp(2.4rem, 11vw, 3.4rem);
+  font-size: clamp(2.7rem, 12vw, 3.8rem);
   font-weight: 700;
   line-height: 1;
   opacity: 0.9;
@@ -754,7 +891,7 @@ body {
   gap: 10px;
   padding: 8px 0;
   border-bottom: 1px solid rgba(148, 163, 184, 0.1);
-  font-size: 0.8rem;
+  font-size: 0.92rem;
 }
 
 .rrow__label {
@@ -769,7 +906,7 @@ body {
 }
 
 .rrow--strong .rrow__value {
-  font-size: 1.05rem;
+  font-size: 1.15rem;
   font-weight: 700;
 }
 
@@ -785,14 +922,14 @@ body {
 }
 
 .finalscore__label {
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   color: var(--muted);
 }
 
 .finalscore__value {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
-  font-size: clamp(1.5rem, 6vw, 2rem);
+  font-size: clamp(1.7rem, 6.6vw, 2.3rem);
   font-weight: 700;
   color: var(--safe);
 }
@@ -805,7 +942,7 @@ body {
   }
 
   .stat__label {
-    font-size: 0.62rem;
+    font-size: 0.74rem;
   }
 
   .action {

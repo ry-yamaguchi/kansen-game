@@ -12,7 +12,7 @@ import {
   step,
   triggerLockdown,
 } from '../sim/engine';
-import type { GameResult, Notice, Phase, SimState, ToolId } from '../sim/types';
+import type { GameResult, ModeId, Notice, Phase, SimState, ToolId } from '../sim/types';
 import { createRenderer, type Preview, type Renderer } from '../render/draw';
 import { computeView, screenToWorld } from '../render/view';
 
@@ -36,6 +36,12 @@ export interface HudSnapshot {
   social: number;
   /** 設置中の隔離エリア数 */
   zones: number;
+  /** 変異株による感染力の倍率。1 より大きければ変異株が出ている */
+  transmissionMul: number;
+  /** 変異株による耐性時間の倍率。1 より小さければ短縮されている */
+  resistanceMul: number;
+  /** 大型イベントで人が集まっている残り時間 */
+  gatherTimer: number;
 }
 
 export interface Toast {
@@ -57,6 +63,9 @@ const EMPTY_HUD: HudSnapshot = {
   lockdownCooldown: 0,
   social: CONFIG.socialMax,
   zones: 0,
+  transmissionMul: 1,
+  resistanceMul: 1,
+  gatherTimer: 0,
 };
 
 function snapshot(sim: SimState): HudSnapshot {
@@ -73,6 +82,9 @@ function snapshot(sim: SimState): HudSnapshot {
     lockdownCooldown: sim.lockdownCooldown,
     social: sim.social,
     zones: sim.zones.length,
+    transmissionMul: sim.transmissionMul,
+    resistanceMul: sim.resistanceMul,
+    gatherTimer: sim.gatherTimer,
   };
 }
 
@@ -88,7 +100,9 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
   const pointerActiveRef = useRef(false);
 
   const countdownRef = useRef(0);
+  const modeRef = useRef<ModeId>('epidemic');
 
+  const [mode, setModeState] = useState<ModeId>('epidemic');
   const [phase, setPhase] = useState<Phase>('ready');
   /** 表示中のカウント。0 は START、-1 は非表示 */
   const [countdown, setCountdown] = useState(-1);
@@ -118,7 +132,7 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
   const reset = useCallback(() => {
     const { w, h } = sizeRef.current;
     const { world, population } = planWorld(w || 1000, h || 640);
-    simRef.current = createSim(world, population);
+    simRef.current = createSim(world, population, modeRef.current);
     previewRef.current = null;
     pointerActiveRef.current = false;
     setResult(null);
@@ -127,6 +141,16 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
   }, []);
 
   /** 開始。すぐには動かさず、カウントダウンのあいだに初期配置を見せる */
+  /** モードを選び直す。待機中の盤面もそのモードで作り直して見せる */
+  const setMode = useCallback(
+    (next: ModeId) => {
+      modeRef.current = next;
+      setModeState(next);
+      if (phaseRef.current === 'ready') reset();
+    },
+    [reset],
+  );
+
   const start = useCallback(() => {
     reset();
     countdownRef.current = CONFIG.countdown;
@@ -220,8 +244,8 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
           step(sim, STEP);
           acc -= STEP;
           guard += 1;
-          // 感染者が0でも終わらせない。終わりは制限時間だけである
-          if (sim.timeLeft <= 0) break;
+          // 伝播が0でも終わらせない。時間切れか、手に負えなくなったときだけ終わる
+          if (sim.outcome !== 'playing') break;
         }
         // ウェーブの通知を拾う
         if (sim.notice && sim.notice.id !== lastNotice) {
@@ -236,7 +260,7 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
           hudAcc = 0;
           setHud(snapshot(sim));
         }
-        if (sim.timeLeft <= 0) {
+        if (sim.outcome !== 'playing') {
           setHud(snapshot(sim));
           finish();
         }
@@ -390,6 +414,8 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
   }, [pushToast]);
 
   return {
+    mode,
+    setMode,
     phase,
     countdown,
     notice,

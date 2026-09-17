@@ -1,19 +1,24 @@
 import { CONFIG, TOOLS } from '../sim/config';
+import { modeOf } from '../sim/modes';
 import type { HudSnapshot } from '../hooks/useGame';
-import type { ToolId } from '../sim/types';
+import type { ModeId, ToolId } from '../sim/types';
 
 interface Props {
   hud: HudSnapshot;
+  mode: ModeId;
   tool: ToolId | null;
   disabled: boolean;
   onSelect(id: ToolId | null): void;
   onLockdown(): void;
 }
 
-export function ActionBar({ hud, tool, disabled, onSelect, onLockdown }: Props) {
+export function ActionBar({ hud, mode, tool, disabled, onSelect, onLockdown }: Props) {
+  const words = modeOf(mode).tools;
   return (
     <nav className="actions" aria-label="対策">
-      {TOOLS.map((meta) => {
+      {TOOLS.map((base) => {
+        // 効果は共通で、呼び名だけモードごとに差し替える
+        const meta = { ...base, ...words[base.id] };
         const affordable = hud.points >= meta.cost;
         const cooling = meta.id === 'lockdown' && hud.lockdownCooldown > 0;
         const selected = tool === meta.id;

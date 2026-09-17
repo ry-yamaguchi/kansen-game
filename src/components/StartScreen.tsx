@@ -1,22 +1,52 @@
 import { CONFIG } from '../sim/config';
+import { MODE_LIST, modeOf } from '../sim/modes';
+import type { ModeId } from '../sim/types';
 
 interface Props {
+  mode: ModeId;
+  onSelectMode(id: ModeId): void;
   onStart(): void;
 }
 
-export function StartScreen({ onStart }: Props) {
+export function StartScreen({ mode, onSelectMode, onStart }: Props) {
+  const def = modeOf(mode);
+
   return (
     <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="start-title">
       <div className="panel">
-        <p className="panel__eyebrow">感染広がりラボ</p>
+        <p className="panel__eyebrow">感染るラボ</p>
         <h2 className="panel__title" id="start-title">
-          街を守ってください
+          何を広げないか、選んでください
         </h2>
+
+        <div className="modes" role="radiogroup" aria-label="モード">
+          {MODE_LIST.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              role="radio"
+              aria-checked={m.id === mode}
+              className={`mode ${m.id === mode ? 'is-selected' : ''}`}
+              onClick={() => onSelectMode(m.id)}
+            >
+              <span className="mode__dots" aria-hidden="true">
+                <i style={{ background: m.colors.susceptible }} />
+                <i style={{ background: m.colors.infected }} />
+                <i style={{ background: m.colors.recovered }} />
+              </span>
+              <span className="mode__name">{m.label}</span>
+              <span className="mode__tag">{m.tagline}</span>
+            </button>
+          ))}
+        </div>
+
         <p className="panel__lead">
-          点は街の人です。<span className="ink ink--danger">赤</span>が感染者、
-          <span className="ink ink--safe">水色</span>が未感染、
-          <span className="ink ink--recovered">紫</span>が回復した人です。
-          近づいた時間が長いほど感染します。
+          {def.intro}{' '}
+          <span style={{ color: def.colors.susceptible }}>{def.states.susceptible}</span> ／{' '}
+          <span style={{ color: def.colors.infected }}>{def.states.infected}</span> ／{' '}
+          <span style={{ color: def.colors.recovered }}>{def.states.recovered}</span> の3状態です。
+          {def.states.recovered}になっても、しばらくすると
+          {def.states.susceptible}に戻ります。
         </p>
 
         <ol className="howto">
@@ -26,8 +56,9 @@ export function StartScreen({ onStart }: Props) {
         </ol>
 
         <p className="panel__note">
-          対策ポイントは {CONFIG.startPoints} から始まり、少しずつ回復します。
-          全部は守りきれません。どこに使うかを選んでください。
+          抑え込むほど{def.socialLabel}が下がり、対策ポイントの回復も鈍ります。
+          スコアは「抑えること」と「{def.socialLabel}を保つこと」の掛け算です。
+          どちらかに振り切っても点になりません。
         </p>
 
         <button type="button" className="cta" onClick={onStart} autoFocus>

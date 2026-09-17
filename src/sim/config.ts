@@ -12,20 +12,10 @@ export const CONFIG = {
 
   // --- エージェント ---
   agentRadius: 6.5,
-  speedMin: 34,
-  speedMax: 58,
-  /** 進行方向のゆらぎ（ラジアン/秒） */
-  turnRate: 2.2,
 
   // --- 感染 ---
-  /** 接触と判定する距離 */
-  contactRadius: 30,
-  /**
-   * 感染者1人との接触で1秒あたり蓄積する量。
-   * SIRS では高すぎると「何をしても3割が感染し続ける」平衡に落ち着き、
-   * 介入の効果が見えなくなる。抑え込みが届く範囲に置く。
-   */
-  exposureGain: 1.8,
+  // 接触距離・伝播力・持続時間・速度はモードごとに違うため
+  // src/sim/modes.ts の tuning 側で持つ。ここには共通のものだけを置く。
   /** 非接触時に1秒あたり減衰する量 */
   exposureDecay: 0.5,
   /** この値を超えると感染判定 */
@@ -34,9 +24,6 @@ export const CONFIG = {
   infectionChance: 0.9,
   /** 同時に効く感染者数の上限（密集地帯での爆発を抑える） */
   maxContactStack: 3,
-  /** 感染期間（秒） */
-  recoveryMin: 10,
-  recoveryMax: 14.5,
 
   // --- 対策ポイント ---
   startPoints: 110,
@@ -116,7 +103,7 @@ export const CONFIG = {
    * 回復量より大きくしないと、上限に張り付いて機構が死ぬ。
    * 1つなら維持できる、2つ以上は削られる、という設定にしている。
    */
-  socialCostPerZone: 2,
+  socialCostPerZone: 1.5,
   /** ロックダウン中に1秒あたり失う活動度 */
   socialCostLockdown: 8,
   /** 何もしていないときに1秒あたり戻る活動度 */
@@ -128,17 +115,25 @@ export const CONFIG = {
   /** 同時に置ける隔離エリアの数 */
   maxZones: 3,
 
-  // --- スコアの重み ---
+  // --- スコア ---
   /**
-   * 非感染率の時間積分に掛ける係数。
-   * 感染を抑えることが主目的なので、社会活動より重くする。
-   * 社会活動を重くしすぎると「何もしないのが最適」になってしまう。
+   * スコアは加算ではなく掛け算で出す。
+   * 加算だと「感染は壊滅したが街は動いていた」でも点が入ってしまい、
+   * 何もしないのが最適解になりかねない。
+   * どちらかが崩れたら点にならない形にしている。
    */
-  scoreProtection: 120,
-  /** 社会活動度の時間積分に掛ける係数 */
-  scoreSocial: 22,
-  /** 最大同時感染者数への減点 */
-  scorePeakPenalty: 14,
+  scoreBase: 10000,
+  /** 抑制係数。この抑制率までは0点 */
+  scoreProtectionFloor: 0.46,
+  /** 床から満点までの幅 */
+  scoreProtectionSpan: 0.38,
+  /** 社会係数。この活動度までは0点 */
+  scoreSocialFloor: 0.28,
+  scoreSocialSpan: 0.62,
+  /** 最大同時感染者数による補正の強さ（最大でこの割合だけ削る） */
+  scorePeakWeight: 0.3,
+  /** 人口のこの割合まで感染が広がったら、補正が最大に効く */
+  scorePeakRef: 0.7,
 
   // --- コスト ---
   costs: {
@@ -204,7 +199,9 @@ export const COLORS = {
  * 感染の広がり方が大きく変わらないようにしている。
  */
 export function planWorld(cssWidth: number, cssHeight: number): { world: World; population: number } {
-  const compact = Math.min(cssWidth, cssHeight) < 520 || cssWidth < 700;
+  // 文字を大きくしたぶん盤面の高さが削られるため、しきい値は低めにする。
+  // ここが高すぎると、通常のPCウィンドウでも小画面扱いになって人数が減る。
+  const compact = Math.min(cssWidth, cssHeight) < 430 || cssWidth < 700;
   const area = compact ? 470_000 : 690_000;
   const population = compact ? 60 : 85;
   const rawAspect = cssWidth / Math.max(1, cssHeight);

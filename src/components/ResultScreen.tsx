@@ -34,7 +34,9 @@ export function ResultScreen({ result, onRetry }: Props) {
         </div>
         <p className={`verdict verdict--${result.rank}`}>{result.verdict}</p>
         <h2 className="panel__title" id="result-title">
-          記録
+          {result.outcome === 'collapsed'
+            ? `${result.survivedSeconds} 秒でゲームオーバー`
+            : '記録'}
         </h2>
         <p className="panel__lead">{result.comment}</p>
 
@@ -63,22 +65,29 @@ export function ResultScreen({ result, onRetry }: Props) {
 
         <ul className="breakdown">
           <li>
-            <span>感染を抑えた時間</span>
-            <span>+{b.protection.toLocaleString('ja-JP')}</span>
+            <span>基礎点</span>
+            <span>{b.base.toLocaleString('ja-JP')}</span>
+          </li>
+          <li className={b.protectionFactor < 0.2 ? 'is-weak' : undefined}>
+            <span>× 感染の抑制</span>
+            <span>{Math.round(b.protectionFactor * 100)}%</span>
+          </li>
+          <li className={b.socialFactor < 0.2 ? 'is-weak' : undefined}>
+            <span>× 社会活動の維持</span>
+            <span>{Math.round(b.socialFactor * 100)}%</span>
           </li>
           <li>
-            <span>社会活動の維持</span>
-            <span>+{b.social.toLocaleString('ja-JP')}</span>
+            <span>× 最大同時感染の補正</span>
+            <span>{Math.round(b.peakFactor * 100)}%</span>
           </li>
           <li>
-            <span>最大同時感染者数</span>
-            <span>{b.peakPenalty.toLocaleString('ja-JP')}</span>
-          </li>
-          <li>
-            <span>残ポイント</span>
-            <span>+{b.points.toLocaleString('ja-JP')}</span>
+            <span>＋ 残ポイント</span>
+            <span>{b.pointsBonus.toLocaleString('ja-JP')}</span>
           </li>
         </ul>
+        <p className="breakdown__note">
+          抑制と社会活動は掛け算です。どちらかが低いと点になりません。
+        </p>
 
         <button ref={retryRef} type="button" className="cta" onClick={onRetry}>
           もう一度プレイ

@@ -4,7 +4,7 @@
  */
 import { CONFIG, planWorld } from '../src/sim/config';
 import { buildResult, createSim, placeIsolation, placeVaccine, step, triggerLockdown } from '../src/sim/engine';
-import type { SimState } from '../src/sim/types';
+import type { ModeId, SimState } from '../src/sim/types';
 
 const DT = 1 / 60;
 
@@ -25,15 +25,19 @@ interface Trial {
   acts: number;
   leftover: number;
   population: number;
+  collapsed: boolean;
+  survived: number;
 }
 
-function runGame(strategy: Strategy): Trial {
+function runGame(strategy: Strategy, mode: ModeId = 'epidemic'): Trial {
   const { world, population } = planWorld(1280, 720);
-  const sim = createSim(world, population);
+  const sim = createSim(world, population, mode);
   const steps = Math.ceil(CONFIG.duration / DT);
   for (let i = 0; i < steps; i += 1) {
     if (i % 30 === 0) act(sim, strategy);
     step(sim, DT);
+    // 打ち切りに達したらそこで終わる
+    if (sim.outcome !== 'playing') break;
   }
   const r = buildResult(sim);
   return {
@@ -45,6 +49,8 @@ function runGame(strategy: Strategy): Trial {
     acts: r.actions.isolation + r.actions.vaccine + r.actions.lockdown,
     leftover: r.pointsLeft,
     population: r.population,
+    collapsed: r.outcome === 'collapsed',
+    survived: r.survivedSeconds,
   };
 }
 
@@ -111,26 +117,33 @@ function greedyAct(sim: SimState): void {
 
 const avg = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
 
-function report(label: string, trials: number, strategy: Strategy): void {
+function report(label: string, trials: number, strategy: Strategy, mode: ModeId = 'epidemic'): void {
   const out: Trial[] = [];
-  for (let i = 0; i < trials; i += 1) out.push(runGame(strategy));
+  for (let i = 0; i < trials; i += 1) out.push(runGame(strategy, mode));
   const prot = out.map((t) => t.protection);
+  const collapsed = out.filter((t) => t.collapsed);
   console.log(
     `${label.padEnd(12)} 抑えた割合 avg=${(avg(prot) * 100).toFixed(1)}% ` +
-      `min=${(Math.min(...prot) * 100).toFixed(0)}% | ` +
-      `社会活動 avg=${(avg(out.map((t) => t.social)) * 100).toFixed(0)} | ` +
-      `最大同時感染 avg=${avg(out.map((t) => t.peak)).toFixed(1)} | ` +
-      `終了時感染 avg=${avg(out.map((t) => t.finalInfected)).toFixed(1)} | ` +
-      `人数 avg=${avg(out.map((t) => t.population)).toFixed(0)} | ` +
-      `手数 avg=${avg(out.map((t) => t.acts)).toFixed(1)} | ` +
+      `社会 avg=${(avg(out.map((t) => t.social)) * 100).toFixed(0)} | ` +
+      `最大同時 avg=${avg(out.map((t) => t.peak)).toFixed(1)} | ` +
+      `打ち切り ${collapsed.length}/${trials}` +
+      (collapsed.length ? `(${avg(collapsed.map((t) => t.survived)).toFixed(0)}秒)` : '') +
+      ` | 手数 avg=${avg(out.map((t) => t.acts)).toFixed(1)} | ` +
       `スコア avg=${avg(out.map((t) => t.score)).toFixed(0)}`,
   );
 }
 
 const TRIALS = 20;
+console.log('=== 感染症モード ===');
 report('放置', TRIALS, 'none');
 report('隔離のみ', TRIALS, 'isolation-only');
 report('隔離連打', TRIALS, 'isolation-spam');
 report('ワクチンのみ', TRIALS, 'vaccine-only');
 report('LDのみ', TRIALS, 'lockdown-only');
 report('簡易AI', TRIALS, 'greedy');
+
+for (const mode of ['rumor', 'anger'] as ModeId[]) {
+  console.log(`=== ${mode} モード ===`);
+  report('放置', TRIALS, 'none', mode);
+  report('簡易AI', TRIALS, 'greedy', mode);
+}

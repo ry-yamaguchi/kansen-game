@@ -12,7 +12,7 @@ export default function App() {
 
   return (
     <div className={`app ${hud.danger > 0.6 ? 'app--alert' : ''}`}>
-      <Hud hud={hud} />
+      <Hud hud={hud} mode={game.mode} />
 
       <main className="stage">
         <canvas
@@ -58,7 +58,9 @@ export default function App() {
           </div>
         ) : null}
 
-        {phase === 'ready' ? <StartScreen onStart={game.start} /> : null}
+        {phase === 'ready' ? (
+          <StartScreen mode={game.mode} onSelectMode={game.setMode} onStart={game.start} />
+        ) : null}
         {phase === 'finished' && game.result ? (
           <ResultScreen result={game.result} onRetry={game.start} />
         ) : null}
@@ -66,6 +68,7 @@ export default function App() {
 
       <ActionBar
         hud={hud}
+        mode={game.mode}
         tool={game.tool}
         disabled={phase !== 'playing' && phase !== 'countdown'}
         onSelect={game.selectTool}

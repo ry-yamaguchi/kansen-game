@@ -1,5 +1,6 @@
 import { CONFIG } from '../sim/config';
-import type { SimState } from '../sim/types';
+import { modeOf } from '../sim/modes';
+import type { ModeId, SimState } from '../sim/types';
 import type { View } from './view';
 
 /** 設置プレビュー。指の位置に何が起きるかを事前に見せる */
@@ -21,14 +22,39 @@ interface Rgb {
   b: number;
 }
 
-const RGB = {
-  susceptible: { r: 45, g: 212, b: 191 },
-  infected: { r: 255, g: 45, b: 85 },
-  recovered: { r: 167, g: 139, b: 250 },
-} satisfies Record<string, Rgb>;
-
 function rgba({ r, g, b }: Rgb, a: number): string {
   return `rgba(${r},${g},${b},${a})`;
+}
+
+function hexToRgb(hex: string): Rgb {
+  const v = hex.replace('#', '');
+  return {
+    r: parseInt(v.slice(0, 2), 16),
+    g: parseInt(v.slice(2, 4), 16),
+    b: parseInt(v.slice(4, 6), 16),
+  };
+}
+
+interface Palette {
+  susceptible: Rgb;
+  infected: Rgb;
+  recovered: Rgb;
+}
+
+/** モードごとの配色。毎フレーム作り直さないよう覚えておく */
+const paletteCache = new Map<ModeId, Palette>();
+
+function paletteOf(mode: ModeId): Palette {
+  const cached = paletteCache.get(mode);
+  if (cached) return cached;
+  const c = modeOf(mode).colors;
+  const p: Palette = {
+    susceptible: hexToRgb(c.susceptible),
+    infected: hexToRgb(c.infected),
+    recovered: hexToRgb(c.recovered),
+  };
+  paletteCache.set(mode, p);
+  return p;
 }
 
 /**
@@ -67,7 +93,14 @@ export interface Renderer {
 
 export function createRenderer(): Renderer {
   const glowSize = 96;
-  const infectedGlow = makeGlowSprite(RGB.infected, glowSize);
+  /** グローはモードごとに色が違うので、必要になった時点で作って覚えておく */
+  const glowCache = new Map<ModeId, HTMLCanvasElement | null>();
+  function glowFor(mode: ModeId): HTMLCanvasElement | null {
+    if (!glowCache.has(mode)) {
+      glowCache.set(mode, makeGlowSprite(paletteOf(mode).infected, glowSize));
+    }
+    return glowCache.get(mode) ?? null;
+  }
 
   function drawField(
     ctx: CanvasRenderingContext2D,
@@ -160,16 +193,23 @@ export function createRenderer(): Renderer {
 
   function drawAgents(ctx: CanvasRenderingContext2D, state: SimState, view: View): void {
     const r = Math.max(2.2, CONFIG.agentRadius * view.scale);
+    const pal = paletteOf(state.mode);
+    const infectedGlow = glowFor(state.mode);
 
-    // 感染者のグロー（背面にまとめて描く）
+    // 感染者のグロー（背面にまとめて描く）。
+    // 変異株が出ているあいだは大きく強く光らせ、盤面を見ただけで異変が伝わるようにする
     if (infectedGlow) {
-      const size = r * 7;
+      const hot = Math.min(2, state.transmissionMul);
+      const size = r * 7 * (1 + (hot - 1) * 0.75);
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, 0.75 + (hot - 1) * 0.5);
       for (const a of state.agents) {
         if (a.state !== 'infected') continue;
         const cx = view.ox + a.x * view.scale;
         const cy = view.oy + a.y * view.scale;
         ctx.drawImage(infectedGlow, cx - size / 2, cy - size / 2, size, size);
       }
+      ctx.restore();
     }
 
     for (const a of state.agents) {
@@ -177,11 +217,20 @@ export function createRenderer(): Renderer {
       const cy = view.oy + a.y * view.scale;
 
       if (a.state === 'susceptible') {
-        ctx.fillStyle = rgba(RGB.susceptible, 0.95);
+        ctx.fillStyle = rgba(pal.susceptible, 0.95);
       } else if (a.state === 'infected') {
-        ctx.fillStyle = rgba(RGB.infected, 1);
+        ctx.fillStyle = rgba(pal.infected, 1);
       } else {
-        ctx.fillStyle = rgba(RGB.recovered, 0.75);
+        // 耐性が切れかけている人は未感染の色に寄せ、また広がりうることを示す
+        const left = Math.min(1, a.immunity / 4);
+        ctx.fillStyle = rgba(
+          {
+            r: Math.round(pal.recovered.r + (pal.susceptible.r - pal.recovered.r) * (1 - left)),
+            g: Math.round(pal.recovered.g + (pal.susceptible.g - pal.recovered.g) * (1 - left)),
+            b: Math.round(pal.recovered.b + (pal.susceptible.b - pal.recovered.b) * (1 - left)),
+          },
+          0.8,
+        );
       }
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);

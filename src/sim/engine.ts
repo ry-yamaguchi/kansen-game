@@ -1,6 +1,6 @@
 import { CONFIG } from './config';
-import { WAVES, WAVE_EFFECT } from './events';
-import type { Agent, GameResult, SimState, World } from './types';
+import { WAVE_EFFECT, modeOf } from './modes';
+import type { Agent, GameResult, ModeId, SimState, Tuning, World } from './types';
 
 const TAU = Math.PI * 2;
 
@@ -8,14 +8,14 @@ function rand(min: number, max: number): number {
   return min + Math.random() * (max - min);
 }
 
-function makeAgent(id: number, world: World): Agent {
+function makeAgent(id: number, world: World, tuning: Tuning): Agent {
   const r = CONFIG.agentRadius;
   return {
     id,
     x: rand(r, world.w - r),
     y: rand(r, world.h - r),
     dir: Math.random() * TAU,
-    speed: rand(CONFIG.speedMin, CONFIG.speedMax),
+    speed: rand(tuning.speedMin, tuning.speedMax),
     state: 'susceptible',
     everInfected: false,
     infectionTimer: 0,
@@ -34,7 +34,7 @@ function infect(agent: Agent, state: SimState): void {
   agent.exposure = 0;
   agent.immunity = 0;
   agent.flash = 1;
-  agent.infectionTimer = rand(CONFIG.recoveryMin, CONFIG.recoveryMax);
+  agent.infectionTimer = rand(state.tuning.spreadMin, state.tuning.spreadMax);
   state.totalInfected += 1;
 }
 
@@ -55,7 +55,7 @@ function spawnInflow(state: SimState): void {
   const r = CONFIG.agentRadius;
   for (let i = 0; i < count; i += 1) {
     if (state.agents.length >= CONFIG.maxPopulation) break;
-    const agent = makeAgent(state.agents.length, state.world);
+    const agent = makeAgent(state.agents.length, state.world, state.tuning);
     // 4辺のどこかから、内側を向いて入ってくる
     const side = Math.floor(Math.random() * 4);
     if (side === 0) {
@@ -87,8 +87,9 @@ function spawnInflow(state: SimState): void {
 
 /** 時刻に達したウェーブを発生させる */
 function applyWaves(state: SimState): void {
-  while (state.nextWave < WAVES.length && state.time >= WAVES[state.nextWave].at) {
-    const wave = WAVES[state.nextWave];
+  const waves = modeOf(state.mode).waves;
+  while (state.nextWave < waves.length && state.time >= waves[state.nextWave].at) {
+    const wave = waves[state.nextWave];
     state.nextWave += 1;
     switch (wave.kind) {
       case 'variant':
@@ -122,11 +123,14 @@ function updateSocial(state: SimState, dt: number): void {
   state.social = Math.max(0, Math.min(CONFIG.socialMax, state.social + delta * dt));
 }
 
-export function createSim(world: World, population: number): SimState {
+export function createSim(world: World, population: number, mode: ModeId = 'epidemic'): SimState {
+  const tuning = { ...modeOf(mode).tuning };
   const agents: Agent[] = [];
-  for (let i = 0; i < population; i += 1) agents.push(makeAgent(i, world));
+  for (let i = 0; i < population; i += 1) agents.push(makeAgent(i, world, tuning));
 
   const state: SimState = {
+    mode,
+    tuning,
     world,
     agents,
     zones: [],
@@ -158,6 +162,7 @@ export function createSim(world: World, population: number): SimState {
     inflowTotal: 0,
     healthySeconds: 0,
     socialSeconds: 0,
+    outcome: 'playing',
   };
 
   // 初期感染者は互いに離れた場所から始めて、複数のクラスタができるようにする
@@ -229,8 +234,13 @@ function moveAgents(state: SimState, dt: number): void {
   const gathering = state.gatherTimer > 0;
   const cx = state.world.w / 2;
   const cy = state.world.h / 2;
+  const t = state.tuning;
   for (const a of state.agents) {
-    a.dir += rand(-CONFIG.turnRate, CONFIG.turnRate) * dt;
+    // 広げている本人は動きが変わる。
+    // 怒りは速く直進し、噂はあちこち動き回る。
+    const active = a.state === 'infected';
+    const turn = t.turnRate * (active ? t.activeTurnMul : 1);
+    a.dir += rand(-turn, turn) * dt;
     // 大型イベント中は中央へ引き寄せる。隔離された人は動けない
     if (gathering && a.zone < 0) {
       const want = Math.atan2(cy - a.y, cx - a.x);
@@ -239,7 +249,10 @@ function moveAgents(state: SimState, dt: number): void {
       while (diff < -Math.PI) diff += Math.PI * 2;
       a.dir += diff * WAVE_EFFECT.gatheringPull * dt;
     }
-    const mul = globalSpeed * (a.zone >= 0 ? CONFIG.zoneSpeedFactor : 1);
+    const mul =
+      globalSpeed *
+      (a.zone >= 0 ? CONFIG.zoneSpeedFactor : 1) *
+      (active ? t.activeSpeedMul : 1);
     const v = a.speed * mul;
     a.x += Math.cos(a.dir) * v * dt;
     a.y += Math.sin(a.dir) * v * dt;
@@ -303,7 +316,7 @@ export function step(state: SimState, dt: number): void {
 
   // --- 接触判定（感染者 × 未感染者） ---
   state.links.length = 0;
-  const cr = CONFIG.contactRadius;
+  const cr = state.tuning.contactRadius;
   const cr2 = cr * cr;
   const agents = state.agents;
   const n = agents.length;
@@ -333,7 +346,8 @@ export function step(state: SimState, dt: number): void {
       const stack = Math.min(a.load, CONFIG.maxContactStack);
       const resist = a.immunity > 0 ? CONFIG.immunityFactor : 1;
       const lockdown = state.lockdownTimer > 0 ? CONFIG.lockdownTransmissionFactor : 1;
-      a.exposure += CONFIG.exposureGain * state.transmissionMul * lockdown * stack * resist * dt;
+      a.exposure +=
+        state.tuning.exposureGain * state.transmissionMul * lockdown * stack * resist * dt;
       if (a.exposure >= CONFIG.exposureThreshold) {
         if (Math.random() < CONFIG.infectionChance) {
           infect(a, state);
@@ -358,7 +372,7 @@ export function step(state: SimState, dt: number): void {
         // 回復直後は耐性があるが、永久ではない。
         // 個体ごとにばらすことで、全員の耐性が同時に切れて
         // 波が同期し、静かな時間だけが続くのを防ぐ。
-        a.immunity = CONFIG.resistanceDuration * state.resistanceMul * rand(0.6, 1.4);
+        a.immunity = state.tuning.resistanceDuration * state.resistanceMul * rand(0.6, 1.4);
       }
     } else if (a.state === 'recovered' && a.immunity <= 0) {
       // 耐性が切れたら未感染に戻る。これで盤面が回復者で埋まって終わらない
@@ -375,6 +389,15 @@ export function step(state: SimState, dt: number): void {
   const pop = Math.max(1, agents.length);
   state.healthySeconds += (1 - state.infected / pop) * dt;
   state.socialSeconds += (state.social / CONFIG.socialMax) * dt;
+
+  // --- 決着 ---
+  // 広がりが0でも終わらせない。手に負えなくなったか、時間切れかの2つだけ。
+  const collapse = modeOf(state.mode).collapseRatio;
+  if (collapse !== undefined && state.infected / pop >= collapse) {
+    state.outcome = 'collapsed';
+  } else if (state.timeLeft <= 0) {
+    state.outcome = 'timeup';
+  }
 
   // --- 危険度（新規感染ペースと感染者比率の合成） ---
   const decay = Math.exp(-dt / 1.8);
@@ -465,24 +488,44 @@ export function previewCounts(
 
 // --- 結果 -------------------------------------------------------------
 
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
 /**
  * スコアの内訳。
- * 感染を抑えた時間と社会活動を維持した時間の両方を評価する。
- * 片方に振り切っても伸びないため、どこで妥協するかの判断が要る。
+ *
+ * 感染の抑制と社会活動の維持を掛け算で評価する。
+ * どちらかが床を割ると係数が0になり、もう片方が満点でも点にならない。
+ * 「閉じ込めて終わり」も「見ているだけ」も成立させないための形である。
  */
 export function breakdownOf(state: SimState): GameResult['breakdown'] {
+  const elapsed = Math.max(1, state.time);
+  const protectionRatio = state.healthySeconds / elapsed;
+  const avgSocial = state.socialSeconds / elapsed;
+  const pop = Math.max(1, state.agents.length);
+  const peakRatio = state.peakInfected / pop;
+
   return {
-    protection: Math.round(state.healthySeconds * CONFIG.scoreProtection),
-    social: Math.round(state.socialSeconds * CONFIG.scoreSocial),
-    peakPenalty: -Math.round(state.peakInfected * CONFIG.scorePeakPenalty),
-    points: Math.round(Math.floor(state.points) * 1),
+    base: CONFIG.scoreBase,
+    protectionFactor: clamp01(
+      (protectionRatio - CONFIG.scoreProtectionFloor) / CONFIG.scoreProtectionSpan,
+    ),
+    socialFactor: clamp01((avgSocial - CONFIG.scoreSocialFloor) / CONFIG.scoreSocialSpan),
+    peakFactor: 1 - CONFIG.scorePeakWeight * clamp01(peakRatio / CONFIG.scorePeakRef),
+    pointsBonus: Math.floor(state.points),
   };
 }
 
-/** プレイ中の実況表示にも使うスコア */
+/**
+ * スコア。プレイ中の実況表示にも使う。
+ * 経過時間の割合を掛けることで、耐えているあいだ積み上がっていくように見せる。
+ */
 export function scoreOf(state: SimState): number {
   const b = breakdownOf(state);
-  return Math.max(0, b.protection + b.social + b.peakPenalty + b.points);
+  const progressed = Math.min(1, state.time / CONFIG.duration);
+  const core = b.base * b.protectionFactor * b.socialFactor * b.peakFactor;
+  return Math.max(0, Math.round((core + b.pointsBonus) * progressed));
 }
 
 export function buildResult(state: SimState): GameResult {
@@ -492,11 +535,14 @@ export function buildResult(state: SimState): GameResult {
   const breakdown = breakdownOf(state);
   const score = scoreOf(state);
 
+  const def = modeOf(state.mode);
+  const outcome: GameResult['outcome'] = state.outcome === 'playing' ? 'timeup' : state.outcome;
+
   // 抑えた度合いと社会活動の両立で評価する
   const balance = protectionRatio * 0.65 + avgSocial * 0.35;
   let rank: GameResult['rank'] = 'D';
   let verdict = '機能不全';
-  let comment = '街は感染に飲まれました。感染者が固まった瞬間に隔離を打つと効きます。';
+  let comment = `街は${def.spreadNoun}に飲まれました。固まった瞬間に${def.tools.isolation.label}を打つと効きます。`;
   if (balance >= 0.85) {
     rank = 'S';
     verdict = '完璧な統制';
@@ -516,7 +562,15 @@ export function buildResult(state: SimState): GameResult {
   }
 
   if (avgSocial < 0.45) {
-    comment = `${comment} 閉じすぎです。社会活動度が下がるとポイントの回復も鈍ります。`;
+    comment = `${comment} 閉じすぎです。${def.socialLabel}が下がるとポイントの回復も鈍ります。`;
+  }
+
+  // 打ち切りは無条件で最低評価にする。時間まで耐えられなかったということ
+  if (outcome === 'collapsed') {
+    rank = 'D';
+    verdict = '崩壊';
+    const pct = Math.round((def.collapseRatio ?? 0.8) * 100);
+    comment = `同時${def.spreadNoun}率が ${pct}% を超え、${Math.round(state.time)} 秒で打ち切られました。手が回らなくなる前に、早い段階で頭を押さえてください。`;
   }
 
   return {
@@ -524,6 +578,8 @@ export function buildResult(state: SimState): GameResult {
     protectionRatio,
     avgSocial,
     peakInfected: state.peakInfected,
+    outcome,
+    survivedSeconds: Math.round(state.time),
     finalInfected: state.infected,
     totalInfected: state.totalInfected,
     inflowTotal: state.inflowTotal,
