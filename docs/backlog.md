@@ -3,6 +3,8 @@
 **作者（Ryosuke）がやってほしいことを、思いついた順に書き足す場所である。**
 形式は気にしなくてよい。1行でよい。優先順位は Kiro が作者に確認する。
 
+作者は `scripts/note backlog "<本文>"` でも足せる（[scripts/note](../scripts/note)）。
+
 Kiro はセッション開始時にこのファイルを読み、未完了（`[ ]`）の上から着手する。
 完了したら `[x]` に変え、その作業のコミットに含める。
 運用の詳細は [.kiro/steering/workflow.md](../.kiro/steering/workflow.md) にある。

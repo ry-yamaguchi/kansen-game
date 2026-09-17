@@ -24,6 +24,7 @@
 | [docs/backlog.md](docs/backlog.md)         | **要望リスト。やってほしいことはここへ書く** |
 | [docs/feedback.md](docs/feedback.md)       | 意見・感想（どなたでも歓迎）                 |
 | [AGENTS.md](AGENTS.md)                     | AI エージェント向けの案内                    |
+| [scripts/note](scripts/note)               | 要望・意見を1行で投げ込む道具（作者用）      |
 | [.kiro/steering/](.kiro/steering/)         | Kiro が常時読む方針と前提                    |
 | `.kiro/specs/`                             | 要件・設計・タスク                           |
 | [.kiro/hooks/](.kiro/hooks/)               | セッション開始時などの自動処理               |
