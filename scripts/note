@@ -94,7 +94,19 @@ SUBJECT="$([ "$KIND" = "backlog" ] && echo "要望" || echo "意見")"
 git add -- "$FILE"
 git commit -q -m "docs: ${SUBJECT}を追記する — ${TEXT}"
 if [ "$PUSH" = "1" ]; then
-  git push -q origin main
+  # 追記から push までの間に Kiro 側が push していることがある。1度だけ取り込み直して再試行する。
+  if ! git push -q origin main 2>/dev/null; then
+    echo "push が拒否された。origin/main を取り込んで再試行する。" >&2
+    git fetch -q origin main
+    git merge -q --no-edit origin/main || {
+      echo "取り込みで衝突した。コミットは手元に残っている。手で解決してから push すること。" >&2
+      exit 1
+    }
+    git push -q origin main || {
+      echo "再試行でも push できなかった。コミットは手元に残っている。" >&2
+      exit 1
+    }
+  fi
   echo "push した: $(git log -1 --format='%h %s')"
 else
   echo "コミットした（push はしていない）: $(git log -1 --format='%h %s')"
