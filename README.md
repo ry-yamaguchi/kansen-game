@@ -18,8 +18,23 @@
 ## 開発
 
 実装は [Kiro](https://kiro.dev) で進める。
-`.kiro/steering/` にリポジトリの扱いとプロジェクトの前提を、
-`.kiro/specs/` に要件・設計・タスクを置く。
+
+| 置き場所                                   | 中身                                         |
+| ------------------------------------------ | -------------------------------------------- |
+| [docs/backlog.md](docs/backlog.md)         | **要望リスト。やってほしいことはここへ書く** |
+| [docs/feedback.md](docs/feedback.md)       | 意見・感想（どなたでも歓迎）                 |
+| [AGENTS.md](AGENTS.md)                     | AI エージェント向けの案内                    |
+| [.kiro/steering/](.kiro/steering/)         | Kiro が常時読む方針と前提                    |
+| `.kiro/specs/`                             | 要件・設計・タスク                           |
+| [.kiro/hooks/](.kiro/hooks/)               | セッション開始時などの自動処理               |
+
+## 意見をお寄せください
+
+遊んでみた感想、気づいた問題、こうなると良いという案を歓迎しています。
+[Issue](https://github.com/ry-yamaguchi/kansen-game/issues/new/choose) から出していただくのが
+いちばん手軽です。[docs/feedback.md](docs/feedback.md) への追記（Pull Request）でも受け付けています。
+
+AI エージェントでご覧の場合は、[AGENTS.md](AGENTS.md) に手順があります。
 
 ## ライセンス
 

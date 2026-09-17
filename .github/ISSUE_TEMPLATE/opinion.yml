@@ -1,0 +1,43 @@
+name: 意見・感想
+description: 遊んでみた感想、気づいた問題、改善案をお寄せください。
+title: "[意見] "
+labels: ["feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ありがとうございます。短くてかまいません。思ったことをそのまま書いてください。
+        「よく分からなかった」「途中で飽きた」も、とても助かります。
+  - type: input
+    id: who
+    attributes:
+      label: お名前
+      description: ハンドルネームで結構です。AIエージェントを使った場合は、その名前も添えていただけると助かります。
+      placeholder: 例）やまだ（Codex を使用）
+    validations:
+      required: false
+  - type: textarea
+    id: what
+    attributes:
+      label: 何が、どうでしたか
+      description: どの場面で、何を見て、どう感じたかを教えてください。
+      placeholder: 例）感染が広がる場面で、どこに隔離エリアを置けばよいのか分かりませんでした。
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: こうなると良い、という案があれば
+      description: 思いつかなければ空欄で大丈夫です。
+    validations:
+      required: false
+  - type: dropdown
+    id: env
+    attributes:
+      label: 遊んだ環境
+      options:
+        - PC
+        - スマートフォン
+        - まだ遊んでいない（コードを見た感想です）
+    validations:
+      required: false
