@@ -43,7 +43,11 @@ export function ActionBar({ hud, mode, tool, disabled, onSelect, onLockdown }: P
             }}
           >
             <span className="action__head">
-              <span className="action__name">{meta.label}</span>
+              {/* 狭い画面では折り返して2行になるため、短い呼び名に切り替える */}
+              <span className="action__name">
+                <span className="action__full">{meta.label}</span>
+                <span className="action__short">{meta.short}</span>
+              </span>
               <span className="action__cost">{meta.cost}</span>
             </span>
             <span className="action__hint">{meta.hint}</span>

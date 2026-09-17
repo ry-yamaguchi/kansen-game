@@ -82,12 +82,12 @@ const EPIDEMIC: ModeDef = {
     },
     vaccine: {
       label: 'ワクチン',
-      short: 'ワクチン',
+      short: '接種',
       hint: '健康な人に免疫をつけ、感染者を早く回復させます',
     },
     lockdown: {
       label: 'ロックダウン',
-      short: 'LD',
+      short: '停止',
       hint: '全員の移動と接触を8秒間抑えます',
     },
   },
@@ -162,7 +162,7 @@ const RUMOR: ModeDef = {
     },
     lockdown: {
       label: '全体アナウンス',
-      short: 'announce',
+      short: '告知',
       hint: '街全体の話題を8秒間そらします',
     },
   },

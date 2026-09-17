@@ -170,11 +170,17 @@ body {
   flex-direction: column;
   align-items: flex-end;
   line-height: 1.1;
+  flex: 0 0 auto;
 }
 
 .score__label {
   font-size: 0.77rem;
   color: var(--muted);
+  white-space: nowrap;
+}
+
+.score__value {
+  white-space: nowrap;
 }
 
 .score__value {
@@ -200,6 +206,7 @@ body {
   font-size: 0.8rem;
   color: var(--muted);
   white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .points__value {
@@ -240,6 +247,7 @@ body {
   font-size: 0.8rem;
   color: var(--muted);
   white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .social__value {
@@ -936,22 +944,99 @@ body {
 
 /* ---------- 横に狭い画面 ---------- */
 
-@media (max-width: 420px) {
-  .stats {
+/* 短い呼び名は狭い画面のときだけ出す */
+.action__short {
+  display: none;
+}
+
+@media (max-width: 480px) {
+  /* 対策ポイントと社会活動は横に並べると値とラベルが重なる。1行ずつにする */
+  .hud__row--bars {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 5px;
+  }
+
+  /* 感染の帯は感染者数と危険演出で伝わるので、狭い画面では省く */
+  .spread {
+    display: none;
+  }
+
+  .hud {
+    padding: 8px 10px 0;
+  }
+
+  .hud__row--top {
     gap: 8px;
+  }
+
+  .stats {
+    gap: 9px;
   }
 
   .stat__label {
     font-size: 0.74rem;
   }
 
-  .action {
-    padding: 8px;
-    min-height: 56px;
+  .stage {
+    margin: 0 10px;
   }
 
-  .action__hint {
+  /* 正式名称は折り返すため、短い呼び名に差し替える */
+  .action__full {
     display: none;
+  }
+
+  .action__short {
+    display: inline;
+  }
+
+  .action {
+    padding: 8px 9px;
+    min-height: 52px;
+  }
+
+  .action__name {
+    font-size: 1rem;
+  }
+
+  .action__hint,
+  .action__ready {
+    display: none;
+  }
+
+  .actions {
+    gap: 6px;
+    padding: 0 10px 10px;
+  }
+
+  .badge {
+    font-size: 0.7rem;
+  }
+}
+
+/*
+ * 320px 級の画面。上段に 残り時間・内訳・スコア を横並びできないため、
+ * 内訳を独立した行へ落とす。文字を削って読めなくするより、1行増やすほうがよい。
+ */
+@media (max-width: 360px) {
+  .hud__row--top {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  .stats {
+    order: 3;
+    flex: 1 1 100%;
+    justify-content: space-between;
+  }
+
+  .actions {
+    gap: 5px;
+  }
+
+  .action {
+    padding: 7px;
   }
 }
 
