@@ -1,0 +1,27 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "backlog-session-start",
+      "description": "セッション開始時に要望リストを読み、次にやることを提示する",
+      "trigger": "SessionStart",
+      "action": {
+        "type": "agent",
+        "prompt": "docs/backlog.md を読み、未完了（[ ]）の項目を上から3件まで、1行ずつ日本語で示してください。そのうえで「次はこれに着手します」と1つ提案し、作者の返事を待ってください。まだ着手はしないこと。未完了が無ければ、その旨を1行だけ伝えてください。"
+      },
+      "timeout": 120,
+      "enabled": true
+    },
+    {
+      "name": "backlog-after-task",
+      "description": "spec のタスクが終わるたびに要望リストを更新する",
+      "trigger": "PostTaskExecution",
+      "action": {
+        "type": "agent",
+        "prompt": "いま終えた作業を docs/backlog.md に反映してください。完了した項目は [x] に変えて「## 完了」へ日付つきで移し、作業中に出た積み残しや新しい要望があれば「## 次にやること」へ1行で追記してください。変更したらその作業のコミットに含めてください。該当が無ければ何もしなくてかまいません。"
+      },
+      "timeout": 120,
+      "enabled": true
+    }
+  ]
+}
