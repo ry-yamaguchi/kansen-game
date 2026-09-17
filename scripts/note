@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# 要望・意見を1行で投げ込むための道具である。
+# 追記 → コミット → push までを1回で行う。実行前に必ず pull する。
+#
+#   scripts/note backlog  "スマートフォンでの当たり判定を大きくする"
+#   scripts/note feedback "隔離をどこに置けばよいか分からなかった" --who "山田（Codex）"
+#   scripts/note backlog  "..." --dry-run
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+使い方: scripts/note <backlog|feedback> "<本文>" [--who 名前] [--dry-run] [--no-push]
+
+  backlog   作者の要望。docs/backlog.md の「次にやること」に足す（実装の指示になる）
+  feedback  感想・気づき。docs/feedback.md の末尾に足す（実装の指示にはならない）
+
+  --who     feedback の書き手（既定: 作者）
+  --dry-run 書き込まず、追記される内容だけ表示する
+  --no-push コミットまでで止める
+USAGE
+}
+
+KIND="${1:-}"; shift || true
+TEXT="${1:-}"; shift || true
+WHO="作者"; DRY=0; PUSH=1
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --who) WHO="${2:-}"; shift 2 ;;
+    --dry-run) DRY=1; shift ;;
+    --no-push) PUSH=0; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "不明な引数です: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+case "$KIND" in
+  backlog) FILE="docs/backlog.md" ;;
+  feedback) FILE="docs/feedback.md" ;;
+  *) echo "第1引数は backlog か feedback です。" >&2; usage >&2; exit 2 ;;
+esac
+if [ -z "$TEXT" ]; then echo "本文が空です。" >&2; usage >&2; exit 2; fi
+
+cd "$(dirname "$0")/.."
+
+# 追記する内容を組み立てる（表示にも使う）
+ENTRY="$(KIND="$KIND" TEXT="$TEXT" WHO="$WHO" python3 - <<'PY'
+import os, datetime
+kind, text, who = os.environ["KIND"], os.environ["TEXT"].strip(), os.environ["WHO"]
+if kind == "backlog":
+    print("- [ ] " + text)
+else:
+    print(f"### {datetime.date.today():%Y-%m-%d} {who}\n\n{text}")
+PY
+)"
+
+if [ "$DRY" = "1" ]; then
+  echo "--- $FILE に追記される内容 ---"
+  echo "$ENTRY"
+  exit 0
+fi
+
+# 先に取り込む。Kiro 側の push と衝突させないため
+git fetch -q origin main
+if ! git merge-base --is-ancestor origin/main HEAD 2>/dev/null; then
+  git merge -q --no-edit origin/main || {
+    echo "origin/main の取り込みで衝突しました。手で解決してから、もう一度実行してください。" >&2
+    exit 1
+  }
+fi
+
+KIND="$KIND" ENTRY="$ENTRY" FILE="$FILE" python3 - <<'PY'
+import os
+kind, entry, path = os.environ["KIND"], os.environ["ENTRY"], os.environ["FILE"]
+lines = open(path, encoding="utf-8").read().split("\n")
+if kind == "backlog":
+    try:
+        start = next(i for i, l in enumerate(lines) if l.startswith("## 次にやること"))
+    except StopIteration:
+        raise SystemExit("docs/backlog.md に「## 次にやること」の節が見つかりません。")
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+    while end > start + 1 and lines[end - 1].strip() == "":
+        end -= 1
+    lines[end:end] = [entry]
+else:
+    while lines and lines[-1].strip() == "":
+        lines.pop()
+    lines += ["", entry]
+open(path, "w", encoding="utf-8").write("\n".join(lines).rstrip("\n") + "\n")
+print(f"{path} に追記した。")
+PY
+
+SUBJECT="$([ "$KIND" = "backlog" ] && echo "要望" || echo "意見")"
+git add -- "$FILE"
+git commit -q -m "docs: ${SUBJECT}を追記する — ${TEXT}"
+if [ "$PUSH" = "1" ]; then
+  # 追記から push までの間に Kiro 側が push していることがある。1度だけ取り込み直して再試行する。
+  if ! git push -q origin main 2>/dev/null; then
+    echo "push が拒否された。origin/main を取り込んで再試行する。" >&2
+    git fetch -q origin main
+    git merge -q --no-edit origin/main || {
+      echo "取り込みで衝突した。コミットは手元に残っている。手で解決してから push すること。" >&2
+      exit 1
+    }
+    git push -q origin main || {
+      echo "再試行でも push できなかった。コミットは手元に残っている。" >&2
+      exit 1
+    }
+  fi
+  echo "push した: $(git log -1 --format='%h %s')"
+else
+  echo "コミットした（push はしていない）: $(git log -1 --format='%h %s')"
+fi
