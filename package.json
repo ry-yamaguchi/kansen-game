@@ -1,0 +1,23 @@
+{
+  "name": "infection-lab",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "balance": "rm -rf .tmp/balance && tsc --ignoreConfig --outDir .tmp/balance --module commonjs --target es2022 --skipLibCheck --strict scripts/balance.ts && echo '{\"type\":\"commonjs\"}' > .tmp/balance/package.json && node .tmp/balance/scripts/balance.js"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.0"
+  }
+}
