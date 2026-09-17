@@ -15,6 +15,13 @@
 | 技術             | React + TypeScript / Canvas       |
 | 状態             | 開発中                            |
 
+## 遊ぶ
+
+<https://ry-yamaguchi.github.io/kansen-game/>
+
+main へ push されるたびに自動で公開される。
+画面の実装が入るまでは、この URL はまだ開けない。
+
 ## 開発
 
 実装は [Kiro](https://kiro.dev) で進める。
