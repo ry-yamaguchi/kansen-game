@@ -27,6 +27,8 @@ export function Hud({ hud }: Props) {
   const seconds = Math.ceil(hud.timeLeft);
   const infectedRatio = hud.population > 0 ? hud.infected / hud.population : 0;
   const pointRatio = Math.min(1, hud.points / CONFIG.maxPoints);
+  const socialRatio = Math.max(0, Math.min(1, hud.social / CONFIG.socialMax));
+  const lowSocial = hud.social < 50;
   const urgent = seconds <= 10;
 
   return (
@@ -55,6 +57,14 @@ export function Hud({ hud }: Props) {
           <span className="points__value">{hud.points}</span>
           <div className="points__track">
             <div className="points__fill" style={{ width: `${pointRatio * 100}%` }} />
+          </div>
+        </div>
+
+        <div className={`social ${lowSocial ? 'social--low' : ''}`}>
+          <span className="social__label">社会活動</span>
+          <span className="social__value">{Math.round(hud.social)}</span>
+          <div className="social__track">
+            <div className="social__fill" style={{ width: `${socialRatio * 100}%` }} />
           </div>
         </div>
 

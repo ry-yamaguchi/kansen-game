@@ -35,6 +35,29 @@ export default function App() {
           ))}
         </div>
 
+        {game.countdown >= 0 ? (
+          <div className="countdown" aria-live="assertive">
+            <span key={game.countdown} className="countdown__value">
+              {game.countdown === 0 ? 'START' : game.countdown}
+            </span>
+            {game.countdown > 0 ? (
+              <span className="countdown__hint">赤い点の位置を確認してください</span>
+            ) : null}
+          </div>
+        ) : null}
+
+        {game.notice ? (
+          <div
+            key={game.notice.id}
+            className={`notice notice--${game.notice.tone}`}
+            role="status"
+            aria-live="polite"
+          >
+            <strong className="notice__title">{game.notice.title}</strong>
+            <span className="notice__detail">{game.notice.detail}</span>
+          </div>
+        ) : null}
+
         {phase === 'ready' ? <StartScreen onStart={game.start} /> : null}
         {phase === 'finished' && game.result ? (
           <ResultScreen result={game.result} onRetry={game.start} />
@@ -44,9 +67,10 @@ export default function App() {
       <ActionBar
         hud={hud}
         tool={game.tool}
-        disabled={phase !== 'playing'}
+        disabled={phase !== 'playing' && phase !== 'countdown'}
         onSelect={game.selectTool}
         onLockdown={game.useLockdown}
+        /* カウントダウン中も選べるようにして、初手を構えておけるようにする */
       />
     </div>
   );

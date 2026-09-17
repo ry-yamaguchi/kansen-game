@@ -24,6 +24,7 @@ export function ResultScreen({ result, onRetry }: Props) {
   }, []);
 
   const usedTotal = result.actions.isolation + result.actions.vaccine + result.actions.lockdown;
+  const b = result.breakdown;
 
   return (
     <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="result-title">
@@ -31,16 +32,19 @@ export function ResultScreen({ result, onRetry }: Props) {
         <div className={`rank rank--${result.rank}`} aria-hidden="true">
           {result.rank}
         </div>
+        <p className={`verdict verdict--${result.rank}`}>{result.verdict}</p>
         <h2 className="panel__title" id="result-title">
           記録
         </h2>
         <p className="panel__lead">{result.comment}</p>
 
         <div className="rrows">
-          <Row label="最終感染率" value={`${Math.round(result.infectionRate * 100)}%`} strong />
-          <Row label="守れた人数" value={`${result.protectedCount} / ${result.population} 人`} strong />
+          <Row label="感染を抑えた割合" value={`${Math.round(result.protectionRatio * 100)}%`} strong />
+          <Row label="平均社会活動度" value={`${Math.round(result.avgSocial * 100)}`} strong />
           <Row label="最大同時感染者数" value={`${result.peakInfected} 人`} />
+          <Row label="終了時の感染者" value={`${result.finalInfected} 人`} />
           <Row label="のべ感染者数" value={`${result.totalInfected} 人`} />
+          <Row label="外部から流入" value={`${result.inflowTotal} 人（最終 ${result.population} 人）`} />
           <Row
             label="使用した対策"
             value={
@@ -56,6 +60,25 @@ export function ResultScreen({ result, onRetry }: Props) {
           <span className="finalscore__label">スコア</span>
           <span className="finalscore__value">{result.score.toLocaleString('ja-JP')}</span>
         </div>
+
+        <ul className="breakdown">
+          <li>
+            <span>感染を抑えた時間</span>
+            <span>+{b.protection.toLocaleString('ja-JP')}</span>
+          </li>
+          <li>
+            <span>社会活動の維持</span>
+            <span>+{b.social.toLocaleString('ja-JP')}</span>
+          </li>
+          <li>
+            <span>最大同時感染者数</span>
+            <span>{b.peakPenalty.toLocaleString('ja-JP')}</span>
+          </li>
+          <li>
+            <span>残ポイント</span>
+            <span>+{b.points.toLocaleString('ja-JP')}</span>
+          </li>
+        </ul>
 
         <button ref={retryRef} type="button" className="cta" onClick={onRetry}>
           もう一度プレイ

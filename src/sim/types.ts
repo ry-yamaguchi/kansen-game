@@ -56,7 +56,19 @@ export interface World {
   h: number;
 }
 
-export type Phase = 'ready' | 'playing' | 'finished';
+/**
+ * countdown は開始直前の数秒。人は動くが時間も感染も進まない。
+ * 初期配置を見て初手を決めるための猶予である。
+ */
+export type Phase = 'ready' | 'countdown' | 'playing' | 'finished';
+
+/** 画面に出す短い通知（ウェーブの発生など） */
+export interface Notice {
+  id: number;
+  title: string;
+  detail: string;
+  tone: 'bad' | 'good';
+}
 
 export type ToolId = 'isolation' | 'vaccine' | 'lockdown';
 
@@ -94,20 +106,62 @@ export interface SimState {
   /** 0..1 の危険度 */
   danger: number;
   nextZoneId: number;
+
+  // --- 社会活動度 ---
+  /** 0..100。隔離やロックダウンで下がり、放っておくと戻る */
+  social: number;
+
+  // --- ウェーブによる変化 ---
+  /** 感染力の倍率。変異株で上がる */
+  transmissionMul: number;
+  /** 回復後の耐性時間の倍率。変異株で下がる */
+  resistanceMul: number;
+  /** 中央へ集まっている残り時間（秒） */
+  gatherTimer: number;
+  /** 次に発生させるウェーブの番号 */
+  nextWave: number;
+  /** 直近の通知。表示したら消してよい */
+  notice: Notice | null;
+  nextNoticeId: number;
+
+  // --- 外部からの流入 ---
+  /** 次の流入までの残り時間（秒） */
+  inflowTimer: number;
+  /** 流入で入ってきたのべ人数 */
+  inflowTotal: number;
+
+  // --- スコアの素になる時間積分 ---
+  /** 非感染率の積分（秒） */
+  healthySeconds: number;
+  /** 社会活動度（0..1に正規化）の積分（秒） */
+  socialSeconds: number;
 }
 
 export interface GameResult {
+  /** 流入を含めた最終人数 */
   population: number;
-  /** 最終感染率（0..1）。一度でも感染した人の割合 */
-  infectionRate: number;
+  /**
+   * 感染を抑えられていた割合（0..1）。
+   * 「終わった瞬間の状態」ではなく制限時間ぜんたいの平均なので、
+   * 最後に感染者が残っていても抑え続けていれば高くなる。
+   */
+  protectionRatio: number;
+  /** 平均社会活動度（0..1） */
+  avgSocial: number;
   peakInfected: number;
-  /** 一度も感染しなかった人数 */
-  protectedCount: number;
+  /** 最後に残っていた感染者数 */
+  finalInfected: number;
+  /** のべ感染者数 */
   totalInfected: number;
+  /** 外から入ってきたのべ人数 */
+  inflowTotal: number;
   actions: ActionCounts;
   pointsLeft: number;
   pointsSpent: number;
+  /** スコアの内訳 */
+  breakdown: { protection: number; social: number; peakPenalty: number; points: number };
   score: number;
   rank: 'S' | 'A' | 'B' | 'C' | 'D';
+  verdict: string;
   comment: string;
 }

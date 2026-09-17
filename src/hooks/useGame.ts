@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { CONFIG, TOOLS, planWorld } from '../sim/config';
 import {
   buildResult,
+  canPlaceIsolation,
   createSim,
   drift,
   placeIsolation,
@@ -11,7 +12,7 @@ import {
   step,
   triggerLockdown,
 } from '../sim/engine';
-import type { GameResult, Phase, SimState, ToolId } from '../sim/types';
+import type { GameResult, Notice, Phase, SimState, ToolId } from '../sim/types';
 import { createRenderer, type Preview, type Renderer } from '../render/draw';
 import { computeView, screenToWorld } from '../render/view';
 
@@ -31,6 +32,10 @@ export interface HudSnapshot {
   danger: number;
   lockdownTimer: number;
   lockdownCooldown: number;
+  /** 0..100 */
+  social: number;
+  /** 設置中の隔離エリア数 */
+  zones: number;
 }
 
 export interface Toast {
@@ -50,6 +55,8 @@ const EMPTY_HUD: HudSnapshot = {
   danger: 0,
   lockdownTimer: 0,
   lockdownCooldown: 0,
+  social: CONFIG.socialMax,
+  zones: 0,
 };
 
 function snapshot(sim: SimState): HudSnapshot {
@@ -64,6 +71,8 @@ function snapshot(sim: SimState): HudSnapshot {
     danger: sim.danger,
     lockdownTimer: sim.lockdownTimer,
     lockdownCooldown: sim.lockdownCooldown,
+    social: sim.social,
+    zones: sim.zones.length,
   };
 }
 
@@ -78,7 +87,12 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
   if (!rendererRef.current) rendererRef.current = createRenderer();
   const pointerActiveRef = useRef(false);
 
+  const countdownRef = useRef(0);
+
   const [phase, setPhase] = useState<Phase>('ready');
+  /** 表示中のカウント。0 は START、-1 は非表示 */
+  const [countdown, setCountdown] = useState(-1);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [hud, setHud] = useState<HudSnapshot>(EMPTY_HUD);
   const [tool, setTool] = useState<ToolId | null>(null);
   const [result, setResult] = useState<GameResult | null>(null);
@@ -108,13 +122,17 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
     previewRef.current = null;
     pointerActiveRef.current = false;
     setResult(null);
+    setNotice(null);
     setHud(snapshot(simRef.current));
   }, []);
 
+  /** 開始。すぐには動かさず、カウントダウンのあいだに初期配置を見せる */
   const start = useCallback(() => {
     reset();
-    phaseRef.current = 'playing';
-    setPhase('playing');
+    countdownRef.current = CONFIG.countdown;
+    setCountdown(CONFIG.countdown);
+    phaseRef.current = 'countdown';
+    setPhase('countdown');
     selectTool('isolation');
   }, [reset, selectTool]);
 
@@ -163,6 +181,8 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
     let acc = 0;
     let hudAcc = 0;
     let elapsed = 0;
+    let lastCount = -1;
+    let lastNotice = 0;
 
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
@@ -176,7 +196,21 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
       if (dt > 0.25) dt = 0.25;
       elapsed += dt;
 
-      if (phaseRef.current !== 'playing') {
+      if (phaseRef.current === 'countdown') {
+        drift(sim, dt);
+        countdownRef.current -= dt;
+        const shown = Math.max(0, Math.ceil(countdownRef.current));
+        if (shown !== lastCount) {
+          lastCount = shown;
+          setCountdown(shown);
+        }
+        if (countdownRef.current <= 0) {
+          phaseRef.current = 'playing';
+          setPhase('playing');
+          // START の表示だけ少し残してから消す
+          window.setTimeout(() => setCountdown(-1), 450);
+        }
+      } else if (phaseRef.current !== 'playing') {
         // 待機中・結果表示中も人は動かしておく
         drift(sim, dt);
       } else {
@@ -186,7 +220,16 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
           step(sim, STEP);
           acc -= STEP;
           guard += 1;
+          // 感染者が0でも終わらせない。終わりは制限時間だけである
           if (sim.timeLeft <= 0) break;
+        }
+        // ウェーブの通知を拾う
+        if (sim.notice && sim.notice.id !== lastNotice) {
+          lastNotice = sim.notice.id;
+          setNotice(sim.notice);
+          window.setTimeout(() => {
+            setNotice((cur) => (cur && cur.id === lastNotice ? null : cur));
+          }, 2600);
         }
         hudAcc += dt;
         if (hudAcc >= HUD_INTERVAL) {
@@ -288,6 +331,13 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
     }
 
     if (id === 'isolation') {
+      if (!canPlaceIsolation(sim)) {
+        pushToast(
+          `隔離エリアは同時に ${CONFIG.maxZones} つまでです。どれかが消えるまで待ってください`,
+          'warn',
+        );
+        return;
+      }
       if (placeIsolation(sim, preview.x, preview.y)) {
         pushToast(`隔離エリアを設置しました（感染 ${preview.infected} / 健康 ${preview.healthy}）`);
       }
@@ -341,6 +391,8 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
 
   return {
     phase,
+    countdown,
+    notice,
     hud,
     tool,
     result,

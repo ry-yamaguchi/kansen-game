@@ -20,8 +20,12 @@ export const CONFIG = {
   // --- 感染 ---
   /** 接触と判定する距離 */
   contactRadius: 30,
-  /** 感染者1人との接触で1秒あたり蓄積する量 */
-  exposureGain: 1.5,
+  /**
+   * 感染者1人との接触で1秒あたり蓄積する量。
+   * SIRS では高すぎると「何をしても3割が感染し続ける」平衡に落ち着き、
+   * 介入の効果が見えなくなる。抑え込みが届く範囲に置く。
+   */
+  exposureGain: 1.8,
   /** 非接触時に1秒あたり減衰する量 */
   exposureDecay: 0.5,
   /** この値を超えると感染判定 */
@@ -41,13 +45,20 @@ export const CONFIG = {
   maxPoints: 200,
 
   // --- 隔離エリア ---
-  zoneRadius: 86,
+  /**
+   * 半径が小さいと盤面のごく一部しか覆えず、社会活動度の代償を回収できない。
+   * 「一区画を封鎖して持ちこたえる」道具として意味を持つ大きさにしている。
+   */
+  zoneRadius: 105,
   /** 感染期間より長く保たせることで、中の感染を燃え尽きさせられる */
   zoneLife: 18,
   /** 隔離中の移動速度倍率 */
   zoneSpeedFactor: 0.24,
-  /** 隔離中は接触も制限されるため、感染圧に掛ける倍率 */
-  zoneContactFactor: 0.32,
+  /**
+   * 隔離中は接触も制限されるため、感染圧に掛ける倍率。
+   * ここを効かせないと、隔離が「健康な人を感染者と閉じ込める罠」になってしまう。
+   */
+  zoneContactFactor: 0.12,
 
   // --- ワクチン／治療エリア ---
   vaccineRadius: 84,
@@ -63,15 +74,77 @@ export const CONFIG = {
   treatFactor: 0.6,
 
   // --- 緊急ロックダウン ---
-  lockdownDuration: 6,
-  lockdownCooldown: 18,
+  lockdownDuration: 8,
+  /**
+   * クールダウンを短くし、抑制の主役にする。
+   * 使いすぎを止めるのは待ち時間ではなく社会活動度の低下であり、
+   * それがポイント回復の鈍化に跳ね返る。
+   */
+  lockdownCooldown: 10,
   lockdownSpeedFactor: 0.14,
+  /**
+   * ロックダウン中の感染圧の倍率。
+   * 止めるだけでは、密集したまま固まって逆に感染が進んでしまう。
+   * 距離を取らせる意味でここも下げる。
+   */
+  lockdownTransmissionFactor: 0.4,
+
+  /** 開始前のカウントダウン（秒） */
+  countdown: 3,
+
+  // --- 回復後の耐性（SIRS）---
+  /**
+   * 回復してから未感染に戻るまでの秒数。
+   * 永久免疫にすると盤面が回復者で埋まって終わってしまうため、必ず戻す。
+   */
+  resistanceDuration: 9,
+
+  // --- 外部からの流入 ---
+  /** 流入の間隔（秒）。時間が経つと短くなる */
+  inflowIntervalStart: 13,
+  inflowIntervalEnd: 7,
+  /** 1回に入ってくる人数。時間が経つと増える */
+  inflowCountStart: 1,
+  inflowCountEnd: 3,
+  /** 人数の上限。増えすぎて重くならないようにする */
+  maxPopulation: 130,
+
+  // --- 社会活動度 ---
+  socialMax: 100,
+  /**
+   * 隔離エリア1つを維持するのに1秒あたり失う活動度。
+   * 回復量より大きくしないと、上限に張り付いて機構が死ぬ。
+   * 1つなら維持できる、2つ以上は削られる、という設定にしている。
+   */
+  socialCostPerZone: 2,
+  /** ロックダウン中に1秒あたり失う活動度 */
+  socialCostLockdown: 8,
+  /** 何もしていないときに1秒あたり戻る活動度 */
+  socialRecovery: 3,
+  /** 活動度が低いと対策ポイントの回復が鈍る。その下限倍率 */
+  socialRegenFloor: 0.35,
+
+  // --- 隔離エリアの制限 ---
+  /** 同時に置ける隔離エリアの数 */
+  maxZones: 3,
+
+  // --- スコアの重み ---
+  /**
+   * 非感染率の時間積分に掛ける係数。
+   * 感染を抑えることが主目的なので、社会活動より重くする。
+   * 社会活動を重くしすぎると「何もしないのが最適」になってしまう。
+   */
+  scoreProtection: 120,
+  /** 社会活動度の時間積分に掛ける係数 */
+  scoreSocial: 22,
+  /** 最大同時感染者数への減点 */
+  scorePeakPenalty: 14,
 
   // --- コスト ---
   costs: {
     isolation: 28,
     vaccine: 30,
-    lockdown: 38,
+    lockdown: 30,
   } satisfies Record<ToolId, number>,
 } as const;
 

@@ -8,14 +8,23 @@ import type { SimState } from '../src/sim/types';
 
 const DT = 1 / 60;
 
-type Strategy = 'none' | 'greedy' | 'isolation-only' | 'vaccine-only' | 'lockdown-only';
+type Strategy =
+  | 'none'
+  | 'greedy'
+  | 'isolation-only'
+  | 'vaccine-only'
+  | 'lockdown-only'
+  | 'isolation-spam';
 
 interface Trial {
-  rate: number;
+  protection: number;
+  social: number;
   peak: number;
+  finalInfected: number;
   score: number;
   acts: number;
   leftover: number;
+  population: number;
 }
 
 function runGame(strategy: Strategy): Trial {
@@ -28,11 +37,14 @@ function runGame(strategy: Strategy): Trial {
   }
   const r = buildResult(sim);
   return {
-    rate: r.infectionRate,
+    protection: r.protectionRatio,
+    social: r.avgSocial,
     peak: r.peakInfected,
+    finalInfected: r.finalInfected,
     score: r.score,
     acts: r.actions.isolation + r.actions.vaccine + r.actions.lockdown,
     leftover: r.pointsLeft,
+    population: r.population,
   };
 }
 
@@ -66,6 +78,12 @@ function act(sim: SimState, strategy: Strategy): void {
     if (h.infected > 0) placeIsolation(sim, h.x, h.y);
     return;
   }
+  // かつて最強だった「隔離して待つ」。社会活動度の代償で沈むことを確かめる
+  if (strategy === 'isolation-spam') {
+    const h = hotspot(sim, CONFIG.zoneRadius);
+    placeIsolation(sim, h.infected > 0 ? h.x : sim.world.w / 2, h.infected > 0 ? h.y : sim.world.h / 2);
+    return;
+  }
   if (strategy === 'vaccine-only') {
     const h = hotspot(sim, CONFIG.vaccineRadius);
     if (h.infected > 0) placeVaccine(sim, h.x, h.y);
@@ -76,14 +94,16 @@ function act(sim: SimState, strategy: Strategy): void {
 
 /** 状況に応じて手を選ぶ簡易AI */
 function greedyAct(sim: SimState): void {
-  // 感染が広がりきっているときだけ、余裕があればロックダウンで時間を稼ぐ
-  if (sim.infected / sim.agents.length > 0.2 && sim.lockdownCooldown === 0 && sim.points > 70) {
+  const ratio = sim.infected / sim.agents.length;
+  // 波が来ているあいだはロックダウンで頭を押さえる。
+  // ただし社会活動度が落ちているときは打たない
+  if (ratio > 0.18 && sim.lockdownCooldown === 0 && sim.social > 55) {
     if (triggerLockdown(sim)) return;
   }
   const best = hotspot(sim, CONFIG.zoneRadius);
   if (best.infected === 0) return;
   // 感染者が固まっているなら隔離、健康な人のほうが多いならワクチン
-  if (best.infected >= 2 && best.infected >= best.healthy) {
+  if (best.infected >= 3 && best.infected >= best.healthy) {
     if (placeIsolation(sim, best.x, best.y)) return;
   }
   placeVaccine(sim, best.x, best.y);
@@ -94,20 +114,23 @@ const avg = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
 function report(label: string, trials: number, strategy: Strategy): void {
   const out: Trial[] = [];
   for (let i = 0; i < trials; i += 1) out.push(runGame(strategy));
-  const rates = out.map((t) => t.rate);
+  const prot = out.map((t) => t.protection);
   console.log(
-    `${label.padEnd(12)} 感染率 avg=${(avg(rates) * 100).toFixed(1)}% ` +
-      `min=${(Math.min(...rates) * 100).toFixed(0)}% max=${(Math.max(...rates) * 100).toFixed(0)}% | ` +
+    `${label.padEnd(12)} 抑えた割合 avg=${(avg(prot) * 100).toFixed(1)}% ` +
+      `min=${(Math.min(...prot) * 100).toFixed(0)}% | ` +
+      `社会活動 avg=${(avg(out.map((t) => t.social)) * 100).toFixed(0)} | ` +
       `最大同時感染 avg=${avg(out.map((t) => t.peak)).toFixed(1)} | ` +
-      `スコア avg=${avg(out.map((t) => t.score)).toFixed(0)} | ` +
+      `終了時感染 avg=${avg(out.map((t) => t.finalInfected)).toFixed(1)} | ` +
+      `人数 avg=${avg(out.map((t) => t.population)).toFixed(0)} | ` +
       `手数 avg=${avg(out.map((t) => t.acts)).toFixed(1)} | ` +
-      `余剰Pt avg=${avg(out.map((t) => t.leftover)).toFixed(0)}`,
+      `スコア avg=${avg(out.map((t) => t.score)).toFixed(0)}`,
   );
 }
 
 const TRIALS = 20;
 report('放置', TRIALS, 'none');
 report('隔離のみ', TRIALS, 'isolation-only');
+report('隔離連打', TRIALS, 'isolation-spam');
 report('ワクチンのみ', TRIALS, 'vaccine-only');
 report('LDのみ', TRIALS, 'lockdown-only');
 report('簡易AI', TRIALS, 'greedy');
