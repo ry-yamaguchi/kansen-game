@@ -13,6 +13,9 @@ export interface Preview {
   /** 隔離の判断材料。範囲内の内訳 */
   infected: number;
   healthy: number;
+  /** 内訳の呼び名。モードによって変わる */
+  infectedLabel: string;
+  healthyLabel: string;
   showCounts: boolean;
 }
 
@@ -180,7 +183,7 @@ export function createRenderer(): Renderer {
     ctx.restore();
 
     if (preview.showCounts) {
-      const label = `感染 ${preview.infected} / 健康 ${preview.healthy}`;
+      const label = `${preview.infectedLabel} ${preview.infected} / ${preview.healthyLabel} ${preview.healthy}`;
       ctx.font = '600 13px ui-monospace, SFMono-Regular, Menlo, monospace';
       const tw = ctx.measureText(label).width;
       const bx = cx - tw / 2 - 8;

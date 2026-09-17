@@ -37,8 +37,14 @@ export interface ModeDef {
   label: string;
   /** 選択画面に出す一行 */
   tagline: string;
-  /** 何が広がるのかの呼び名 */
+  /** 何が広がるのかの呼び名。「感染」「拡散」など */
   spreadNoun: string;
+  /** 広げている人の呼び名。人数を数える文脈で使う */
+  personNoun: string;
+  /** 伝播力が上がる出来事の呼び名。「変異株」「尾ひれ」など */
+  variantLabel: string;
+  /** 伝播力そのものの呼び名。「感染力」など */
+  powerLabel: string;
   /** 状態の呼び名 */
   states: { susceptible: string; infected: string; recovered: string };
   colors: { susceptible: string; infected: string; recovered: string };
@@ -62,6 +68,9 @@ const EPIDEMIC: ModeDef = {
   label: '感染症',
   tagline: '接触でうつる。基本のモードです',
   spreadNoun: '感染',
+  personNoun: '感染者',
+  variantLabel: '変異株',
+  powerLabel: '感染力',
   states: { susceptible: '未感染', infected: '感染', recovered: '回復' },
   colors: { susceptible: '#2dd4bf', infected: '#ff2d55', recovered: '#a78bfa' },
   socialLabel: '社会活動',
@@ -134,6 +143,9 @@ const RUMOR: ModeDef = {
   label: '噂話',
   tagline: '遠くまで一瞬で届く。飽きるのも早いです',
   spreadNoun: '拡散',
+  personNoun: '拡散者',
+  variantLabel: '尾ひれ',
+  powerLabel: '広まりやすさ',
   states: { susceptible: '知らない', infected: '噂している', recovered: '飽きた' },
   colors: { susceptible: '#38bdf8', infected: '#fbbf24', recovered: '#64748b' },
   socialLabel: '世間の信頼',
@@ -208,6 +220,9 @@ const ANGER: ModeDef = {
   label: '悪感情',
   tagline: '怒った人は速く突き進む。すぐ再燃します',
   spreadNoun: '炎上',
+  personNoun: '怒った人',
+  variantLabel: '蒸し返し',
+  powerLabel: '移りやすさ',
   states: { susceptible: '平静', infected: '怒り', recovered: '冷めた' },
   colors: { susceptible: '#4ade80', infected: '#f43f5e', recovered: '#94a3b8' },
   socialLabel: '街の空気',

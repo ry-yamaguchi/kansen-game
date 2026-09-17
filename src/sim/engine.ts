@@ -574,6 +574,7 @@ export function buildResult(state: SimState): GameResult {
   }
 
   return {
+    mode: state.mode,
     population: state.agents.length,
     protectionRatio,
     avgSocial,

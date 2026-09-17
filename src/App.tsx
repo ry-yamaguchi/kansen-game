@@ -4,11 +4,13 @@ import { Hud } from './components/Hud';
 import { ResultScreen } from './components/ResultScreen';
 import { StartScreen } from './components/StartScreen';
 import { useGame } from './hooks/useGame';
+import { modeOf } from './sim/modes';
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const game = useGame(canvasRef);
   const { hud, phase } = game;
+  const words = modeOf(game.mode);
 
   return (
     <div className={`app ${hud.danger > 0.6 ? 'app--alert' : ''}`}>
@@ -19,7 +21,7 @@ export default function App() {
           ref={canvasRef}
           className="board"
           role="img"
-          aria-label={`街の様子。未感染 ${hud.susceptible} 人、感染 ${hud.infected} 人、回復 ${hud.recovered} 人。`}
+          aria-label={`街の様子。${words.states.susceptible} ${hud.susceptible} 人、${words.states.infected} ${hud.infected} 人、${words.states.recovered} ${hud.recovered} 人。`}
           onPointerDown={game.onPointerDown}
           onPointerMove={game.onPointerMove}
           onPointerUp={game.onPointerUp}

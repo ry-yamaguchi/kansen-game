@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CONFIG, TOOLS, planWorld } from '../sim/config';
+import { modeOf } from '../sim/modes';
 import {
   buildResult,
   canPlaceIsolation,
@@ -302,6 +303,7 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
       const y = Math.min(sim.world.h - r * 0.35, Math.max(r * 0.35, p.y));
       const counts = previewCounts(sim, x, y, r);
       const meta = TOOLS.find((t) => t.id === id);
+      const words = modeOf(sim.mode);
       previewRef.current = {
         x,
         y,
@@ -310,6 +312,8 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
         affordable: sim.points >= CONFIG.costs[id],
         infected: counts.infected,
         healthy: counts.healthy,
+        infectedLabel: words.states.infected,
+        healthyLabel: words.states.susceptible,
         showCounts: true,
       };
     },
@@ -354,20 +358,23 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
       return;
     }
 
+    const words = modeOf(sim.mode);
     if (id === 'isolation') {
       if (!canPlaceIsolation(sim)) {
         pushToast(
-          `隔離エリアは同時に ${CONFIG.maxZones} つまでです。どれかが消えるまで待ってください`,
+          `${words.tools.isolation.label}は同時に ${CONFIG.maxZones} つまでです。どれかが消えるまで待ってください`,
           'warn',
         );
         return;
       }
       if (placeIsolation(sim, preview.x, preview.y)) {
-        pushToast(`隔離エリアを設置しました（感染 ${preview.infected} / 健康 ${preview.healthy}）`);
+        pushToast(
+          `${words.tools.isolation.label}を設置しました（${words.states.infected} ${preview.infected} / ${words.states.susceptible} ${preview.healthy}）`,
+        );
       }
     } else if (id === 'vaccine') {
       if (placeVaccine(sim, preview.x, preview.y)) {
-        pushToast('ワクチンを散布しました');
+        pushToast(`${words.tools.vaccine.label}を実施しました`);
       }
     }
     setHud(snapshot(sim));
@@ -395,9 +402,10 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
   const useLockdown = useCallback(() => {
     const sim = simRef.current;
     if (!sim || phaseRef.current !== 'playing') return;
+    const words = modeOf(sim.mode);
     if (sim.lockdownCooldown > 0) {
       pushToast(
-        `ロックダウンはあと ${Math.ceil(sim.lockdownCooldown)} 秒で使えます`,
+        `${words.tools.lockdown.label}はあと ${Math.ceil(sim.lockdownCooldown)} 秒で使えます`,
         'warn',
       );
       return;
@@ -408,7 +416,7 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
       return;
     }
     if (triggerLockdown(sim)) {
-      pushToast('緊急ロックダウンを発動しました');
+      pushToast(`${words.tools.lockdown.label}を発動しました`);
       setHud(snapshot(sim));
     }
   }, [pushToast]);

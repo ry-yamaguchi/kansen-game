@@ -41,21 +41,21 @@ export function Hud({ hud, mode }: Props) {
     const remain = Math.max(0, Math.ceil(def.collapseRatio * hud.population - hud.infected));
     badges.push({
       key: 'collapse',
-      text: `崩壊まであと ${remain} 人（${Math.round(def.collapseRatio * 100)}% で打ち切り）`,
+      text: `崩壊まであと ${remain} 人（同時${def.spreadNoun}率 ${Math.round(def.collapseRatio * 100)}% で打ち切り）`,
       tone: 'bad',
     });
   }
   if (hud.transmissionMul > 1.01) {
     badges.push({
       key: 'variant',
-      text: `変異株　感染力 ×${hud.transmissionMul.toFixed(1)}`,
+      text: `${def.variantLabel}　${def.powerLabel} ×${hud.transmissionMul.toFixed(1)}`,
       tone: 'bad',
     });
   }
   if (hud.resistanceMul < 0.99) {
     badges.push({
       key: 'weak',
-      text: `変異株　回復後の耐性 ${Math.round(hud.resistanceMul * 100)}%`,
+      text: `${def.variantLabel}　${def.states.recovered}のあとの耐性 ${Math.round(hud.resistanceMul * 100)}%`,
       tone: 'bad',
     });
   }
@@ -69,14 +69,14 @@ export function Hud({ hud, mode }: Props) {
   if (hud.lockdownTimer > 0) {
     badges.push({
       key: 'lockdown',
-      text: `ロックダウン中　あと ${Math.ceil(hud.lockdownTimer)} 秒`,
+      text: `${def.tools.lockdown.label}中　あと ${Math.ceil(hud.lockdownTimer)} 秒`,
       tone: 'info',
     });
   }
   if (hud.zones > 0) {
     badges.push({
       key: 'zones',
-      text: `隔離 ${hud.zones} / ${CONFIG.maxZones}`,
+      text: `${def.tools.isolation.short} ${hud.zones} / ${CONFIG.maxZones}`,
       tone: 'zone',
     });
   }

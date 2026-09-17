@@ -177,6 +177,7 @@ export interface SimState {
 }
 
 export interface GameResult {
+  mode: ModeId;
   /** 流入を含めた最終人数 */
   population: number;
   /**
