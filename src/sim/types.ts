@@ -4,6 +4,18 @@ import type { Rng } from './rng';
 
 export type AgentState = 'susceptible' | 'infected' | 'recovered';
 
+/** 一日の時間帯。朝は通う先、昼は広場（一部は駅）、夕方は家へ向かう */
+export type Period = 'morning' | 'noon' | 'evening';
+
+/**
+ * 今向かっている（または着いている）目的の種類。
+ * - home: 家にいる、または家へ向かっている（夕方の既定）
+ * - commute: 学校・職場にいる、または向かっている（朝の既定）
+ * - noon: 広場か駅にいる、または向かっている（昼の既定）
+ * - gather: 大型イベントで広場に集まっている、または向かっている（時間帯に関わらず割り込む）
+ */
+export type Purpose = 'home' | 'commute' | 'noon' | 'gather';
+
 export interface Agent {
   id: number;
   x: number;
@@ -29,6 +41,74 @@ export interface Agent {
   load: number;
   /** 状態変化時の視覚パルス（1 → 0 に減衰） */
   flash: number;
+
+  // --- 街・目的地（2026-09-24 街への作り直しで追加） ---
+  /** 家（住宅区画に面した通り沿いの点） */
+  homeX: number;
+  homeY: number;
+  /** 通う先が学校か職場か */
+  commuteRole: 'school' | 'work';
+  /** 昼に広場でなく駅へ向かう人か */
+  noonToStation: boolean;
+  /** 出発時刻の個人差（秒）。時間帯が変わってからこの秒数だけ待って出発する */
+  departureOffset: number;
+  /** 通りの中での横ずれ量（固定・個体ごと）。同じ通りを歩く全員が一本の線に重ならないようにする */
+  lane: number;
+  /** 今向かっている、または達している目的 */
+  purpose: Purpose;
+  /** 次に切り替える目的。departAt に達するまでは purpose を保つ */
+  pendingPurpose: Purpose | null;
+  /** pendingPurpose へ切り替えてよい時刻（SimState.time と同じ単位） */
+  departAt: number;
+  /** 目的地に着いて、その場で小さく歩き回っているか */
+  arrived: boolean;
+  /** これから通る経路（交差点などの通過点を順に並べたもの）。着いていれば空 */
+  path: { x: number; y: number }[];
+  /** path の何番目の点を目指しているか */
+  pathIndex: number;
+  /** 今回の目的地（滞在中はこの点を中心に小さく歩き回る） */
+  targetX: number;
+  targetY: number;
+}
+
+export type BlockRole = 'house' | 'plaza' | 'station' | 'school' | 'work';
+
+/** 街の区画（1マス）。住宅は建物で通れず、それ以外は中を歩ける */
+export interface CityBlock {
+  role: BlockRole;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** 区画グリッド上の列・行（0始まり） */
+  col: number;
+  row: number;
+}
+
+/** 通りの交差点。経路探索の節点 */
+export interface CityNode {
+  x: number;
+  y: number;
+  /** 交差点グリッド上の行・列（0始まり。区画数 + 1 だけある） */
+  r: number;
+  c: number;
+}
+
+/** 街の盤面。区画と通り（交差点の格子）を持つ。世界の大きさが決まれば一意に決まる */
+export interface City {
+  cols: number;
+  rows: number;
+  /** 通りの幅（world units） */
+  streetWidth: number;
+  blocks: CityBlock[];
+  /** 交差点。nodes[行][列] */
+  nodes: CityNode[][];
+  /** 住宅区画（通れない）だけを抜き出したもの */
+  houses: CityBlock[];
+  plaza: CityBlock;
+  station: CityBlock;
+  school: CityBlock;
+  work: CityBlock;
 }
 
 export interface IsolationZone {
@@ -126,6 +206,10 @@ export interface SimState {
   mode: ModeId;
   tuning: Tuning;
   world: World;
+  /** 街の盤面（区画・通り）。world から一意に決まり、ゲーム中は変わらない */
+  city: City;
+  /** 今の時間帯 */
+  period: Period;
   agents: Agent[];
   /** このシミュレーション専用のシード付き乱数生成器。標準の乱数関数は使わない */
   rng: Rng;

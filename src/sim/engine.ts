@@ -1,21 +1,48 @@
+import { buildCity, homeSpots, pushOutOfHouses, randomPointInBlock, routeTo } from './city';
 import { CONFIG } from './config';
 import { WAVE_EFFECT, modeOf } from './modes';
 import { createRng } from './rng';
 import type { Rng } from './rng';
-import type { Agent, GameResult, ModeId, SimState, Tuning, World } from './types';
+import type {
+  Agent,
+  City,
+  GameResult,
+  ModeId,
+  Notice,
+  Period,
+  Purpose,
+  SimState,
+  Tuning,
+  World,
+} from './types';
 
 const TAU = Math.PI * 2;
+
+/** 家の候補点は住宅1つあたりこの数だけ用意する。30人（既定）はもちろん、流入で増えても賄える */
+const HOME_DOORS_PER_HOUSE = 4;
+/** 目的地の区画に入るときの縁からの余白（壁に張り付かないようにする） */
+const BLOCK_MARGIN = CONFIG.agentRadius * 1.5;
+/** 家で待つときに歩き回る範囲の半径。通りの幅を超えて隣の区画にはみ出さない大きさに抑える */
+const HOME_WANDER_HALF = 28;
+/** 「小さく歩き回る」ときの速さの倍率。移動中より控えめにする */
+const WANDER_SPEED_MUL = 0.4;
 
 function rand(rng: Rng, min: number, max: number): number {
   return min + rng.next() * (max - min);
 }
 
-function makeAgent(id: number, world: World, tuning: Tuning, rng: Rng): Agent {
-  const r = CONFIG.agentRadius;
+function makeAgent(
+  id: number,
+  tuning: Tuning,
+  rng: Rng,
+  city: City,
+  homePool: { x: number; y: number }[],
+): Agent {
+  const home = homePool[rng.int(homePool.length)];
   return {
     id,
-    x: rand(rng, r, world.w - r),
-    y: rand(rng, r, world.h - r),
+    x: home.x,
+    y: home.y,
     dir: rng.next() * TAU,
     speed: rand(rng, tuning.speedMin, tuning.speedMax),
     state: 'susceptible',
@@ -27,7 +54,88 @@ function makeAgent(id: number, world: World, tuning: Tuning, rng: Rng): Agent {
     contacts: 0,
     load: 0,
     flash: 0,
+
+    homeX: home.x,
+    homeY: home.y,
+    commuteRole: rng.next() < 0.5 ? 'school' : 'work',
+    noonToStation: rng.next() < CONFIG.noonStationRatio,
+    departureOffset: rand(rng, 0, CONFIG.departureJitterMax),
+    lane: rand(rng, -city.streetWidth * 0.32, city.streetWidth * 0.32),
+    purpose: 'home',
+    pendingPurpose: null,
+    departAt: 0,
+    arrived: true,
+    path: [],
+    pathIndex: 0,
+    targetX: home.x,
+    targetY: home.y,
   };
+}
+
+/** 時刻から今の時間帯を決める。純粋関数（CONFIG の境目だけを見る） */
+function periodOf(time: number): Period {
+  if (time < CONFIG.periodMorningEnd) return 'morning';
+  if (time < CONFIG.periodNoonEnd) return 'noon';
+  return 'evening';
+}
+
+/** 今この人が向かうべき目的。大型イベント中は隔離区画の外にいる人だけ広場へ割り込む */
+function purposeForPeriod(state: SimState, a: Agent): Purpose {
+  if (state.gatherTimer > 0 && a.zone < 0) return 'gather';
+  if (state.period === 'morning') return 'commute';
+  if (state.period === 'noon') return 'noon';
+  return 'home';
+}
+
+/** purpose に応じた目的地を決める。区画の中はそのつど別の点を選ぶ（着くたびに立ち位置が変わる） */
+function targetFor(state: SimState, a: Agent, purpose: Purpose): { x: number; y: number } {
+  const city = state.city;
+  switch (purpose) {
+    case 'home':
+      return { x: a.homeX, y: a.homeY };
+    case 'commute':
+      return randomPointInBlock(state.rng, a.commuteRole === 'school' ? city.school : city.work, BLOCK_MARGIN);
+    case 'noon':
+      return randomPointInBlock(state.rng, a.noonToStation ? city.station : city.plaza, BLOCK_MARGIN);
+    case 'gather':
+      return randomPointInBlock(state.rng, city.plaza, BLOCK_MARGIN);
+    default:
+      return { x: a.homeX, y: a.homeY };
+  }
+}
+
+/**
+ * purpose を切り替え、新しい経路を計算する。経路は目的が変わったこのタイミングだけで作り、
+ * 毎フレームは作り直さない。
+ */
+function beginTrip(state: SimState, a: Agent, purpose: Purpose): void {
+  const target = targetFor(state, a, purpose);
+  a.path = routeTo(state.city, { x: a.x, y: a.y }, target, a.lane);
+  a.pathIndex = 0;
+  a.targetX = target.x;
+  a.targetY = target.y;
+  a.purpose = purpose;
+  a.pendingPurpose = null;
+  a.arrived = a.path.length === 0;
+}
+
+/**
+ * 目的の切り替えを検知し、出発時刻（個人差つき）に達していれば経路を作り直す。
+ * まだなら今の目的（滞在・移動）を続けさせるだけで、ここでは何もしない。
+ */
+function updateAgentPurpose(state: SimState, a: Agent): void {
+  const desired = purposeForPeriod(state, a);
+  if (a.purpose === desired) {
+    a.pendingPurpose = null;
+    return;
+  }
+  if (a.pendingPurpose !== desired) {
+    a.pendingPurpose = desired;
+    a.departAt = state.time + a.departureOffset;
+    return;
+  }
+  if (state.time < a.departAt) return;
+  beginTrip(state, a, desired);
 }
 
 function infect(agent: Agent, state: SimState): void {
@@ -45,38 +153,33 @@ function progress(state: SimState): number {
   return Math.min(1, state.time / CONFIG.duration);
 }
 
+/** 通知を出す（既存の通知は上書きされる）。ウェーブと時間帯の通知で共有する */
+function pushNotice(state: SimState, title: string, detail: string, tone: Notice['tone']): void {
+  state.nextNoticeId += 1;
+  state.notice = { id: state.nextNoticeId, title, detail, tone };
+}
+
 /**
- * 画面の端から感染者を送り込む。
+ * 駅の中から感染者を送り込む。
  * これが無いと、一度抑え込んだ時点でプレイヤーのやることが消えてしまう。
+ * 駅の中から出てくるようにすることで、駅を押さえる価値が生まれる。
+ * 出てきた人にも家と通う先を割り当て、出発時刻を待たずに今の時間帯の行き先へ向かわせる
+ * （もとから街にいた人と同じ「個人差」を待たせる理由が無いため）。
  */
 function spawnInflow(state: SimState): void {
   const p = progress(state);
   const count = Math.round(
     CONFIG.inflowCountStart + (CONFIG.inflowCountEnd - CONFIG.inflowCountStart) * p,
   );
-  const r = CONFIG.agentRadius;
+  const homePool = homeSpots(state.city, HOME_DOORS_PER_HOUSE);
   for (let i = 0; i < count; i += 1) {
     if (state.agents.length >= CONFIG.maxPopulation) break;
-    const agent = makeAgent(state.agents.length, state.world, state.tuning, state.rng);
-    // 4辺のどこかから、内側を向いて入ってくる
-    const side = state.rng.int(4);
-    if (side === 0) {
-      agent.x = r;
-      agent.y = rand(state.rng, r, state.world.h - r);
-      agent.dir = rand(state.rng, -0.7, 0.7);
-    } else if (side === 1) {
-      agent.x = state.world.w - r;
-      agent.y = rand(state.rng, r, state.world.h - r);
-      agent.dir = Math.PI + rand(state.rng, -0.7, 0.7);
-    } else if (side === 2) {
-      agent.x = rand(state.rng, r, state.world.w - r);
-      agent.y = r;
-      agent.dir = Math.PI / 2 + rand(state.rng, -0.7, 0.7);
-    } else {
-      agent.x = rand(state.rng, r, state.world.w - r);
-      agent.y = state.world.h - r;
-      agent.dir = -Math.PI / 2 + rand(state.rng, -0.7, 0.7);
-    }
+    const agent = makeAgent(state.agents.length, state.tuning, state.rng, state.city, homePool);
+    const spawn = randomPointInBlock(state.rng, state.city.station, BLOCK_MARGIN);
+    agent.x = spawn.x;
+    agent.y = spawn.y;
+    agent.dir = state.rng.next() * TAU;
+    beginTrip(state, agent, purposeForPeriod(state, agent));
     state.agents.push(agent);
     infect(agent, state);
     state.inflowTotal += 1;
@@ -107,14 +210,16 @@ function applyWaves(state: SimState): void {
         state.resistanceMul *= WAVE_EFFECT.weakImmunityFactor;
         break;
     }
-    state.nextNoticeId += 1;
-    state.notice = {
-      id: state.nextNoticeId,
-      title: wave.title,
-      detail: wave.detail,
-      tone: wave.tone,
-    };
+    pushNotice(state, wave.title, wave.detail, wave.tone);
   }
+}
+
+/** 時間帯が変わったことを知らせる通知の文面 */
+function periodNoticeOf(period: Period): { title: string; detail: string } {
+  if (period === 'noon') return { title: '昼になりました', detail: '人が広場へ向かいます' };
+  if (period === 'evening') return { title: '夕方になりました', detail: '人が家へ向かいます' };
+  // 'morning' への遷移は時刻0の初期値から始まるため、実際の対戦中には起きない
+  return { title: '朝になりました', detail: '人が学校・職場へ向かいます' };
 }
 
 /** 社会活動度。閉じ込めるほど下がり、放っておくと戻る */
@@ -133,13 +238,17 @@ export function createSim(
 ): SimState {
   const rng = createRng(seed);
   const tuning = { ...modeOf(mode).tuning };
+  const city = buildCity(world);
+  const homePool = homeSpots(city, HOME_DOORS_PER_HOUSE);
   const agents: Agent[] = [];
-  for (let i = 0; i < population; i += 1) agents.push(makeAgent(i, world, tuning, rng));
+  for (let i = 0; i < population; i += 1) agents.push(makeAgent(i, tuning, rng, city, homePool));
 
   const state: SimState = {
     mode,
     tuning,
     world,
+    city,
+    period: 'morning',
     agents,
     rng,
     zones: [],
@@ -185,23 +294,89 @@ export function createSim(
   return state;
 }
 
-/** 世界の外周で反射させる */
-function bounceWorld(a: Agent, world: World): void {
-  const r = CONFIG.agentRadius;
-  if (a.x < r) {
-    a.x = r;
+/** 矩形の中に留まるよう反射させる（旧版で世界の外周に使っていたのと同じ考え方） */
+function bounceRect(a: Agent, b: { x: number; y: number; w: number; h: number }): void {
+  if (a.x < b.x) {
+    a.x = b.x;
     a.dir = Math.PI - a.dir;
-  } else if (a.x > world.w - r) {
-    a.x = world.w - r;
+  } else if (a.x > b.x + b.w) {
+    a.x = b.x + b.w;
     a.dir = Math.PI - a.dir;
   }
-  if (a.y < r) {
-    a.y = r;
+  if (a.y < b.y) {
+    a.y = b.y;
     a.dir = -a.dir;
-  } else if (a.y > world.h - r) {
-    a.y = world.h - r;
+  } else if (a.y > b.y + b.h) {
+    a.y = b.y + b.h;
     a.dir = -a.dir;
   }
+}
+
+/**
+ * 滞在中に小さく歩き回る範囲。
+ * home は家の前の通りの中に収まる大きさ、それ以外は目的の区画（学校・職場・広場・駅）の内側にする。
+ */
+function wanderBounds(state: SimState, a: Agent): { x: number; y: number; w: number; h: number } {
+  if (a.purpose === 'home') {
+    const half = Math.min(HOME_WANDER_HALF, state.city.streetWidth * 0.42);
+    return { x: a.homeX - half, y: a.homeY - half, w: half * 2, h: half * 2 };
+  }
+  const city = state.city;
+  const block =
+    a.purpose === 'gather'
+      ? city.plaza
+      : a.purpose === 'commute'
+        ? a.commuteRole === 'school'
+          ? city.school
+          : city.work
+        : a.noonToStation
+          ? city.station
+          : city.plaza;
+  const pad = CONFIG.agentRadius * 1.4;
+  return {
+    x: block.x + pad,
+    y: block.y + pad,
+    w: Math.max(1, block.w - pad * 2),
+    h: Math.max(1, block.h - pad * 2),
+  };
+}
+
+/** 経路をたどって進む。着いたら path を空にする */
+function followPath(a: Agent, speed: number, dt: number): void {
+  let remaining = speed * dt;
+  while (remaining > 0 && a.pathIndex < a.path.length) {
+    const wp = a.path[a.pathIndex];
+    const dx = wp.x - a.x;
+    const dy = wp.y - a.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 1e-6 || dist <= remaining) {
+      a.x = wp.x;
+      a.y = wp.y;
+      remaining -= dist;
+      a.pathIndex += 1;
+    } else {
+      a.dir = Math.atan2(dy, dx);
+      a.x += (dx / dist) * remaining;
+      a.y += (dy / dist) * remaining;
+      remaining = 0;
+    }
+  }
+  if (a.pathIndex >= a.path.length) {
+    a.arrived = true;
+    a.path = [];
+    a.pathIndex = 0;
+  }
+}
+
+/** 目的地（または家の前）に着いた人を、その場で小さく歩き回らせる */
+function wanderInPlace(state: SimState, a: Agent, speed: number, dt: number, active: boolean): void {
+  const t = state.tuning;
+  const turn = t.turnRate * (active ? t.activeTurnMul : 1);
+  a.dir += rand(state.rng, -turn, turn) * dt;
+  const v = speed * WANDER_SPEED_MUL;
+  a.x += Math.cos(a.dir) * v * dt;
+  a.y += Math.sin(a.dir) * v * dt;
+  bounceRect(a, wanderBounds(state, a));
 }
 
 /**
@@ -245,35 +420,34 @@ function recount(state: SimState): void {
   if (i > state.peakInfected) state.peakInfected = i;
 }
 
-/** 移動と、フレームごとに寿命が減る値の更新 */
+/**
+ * 移動と、フレームごとに寿命が減る値の更新。
+ *
+ * 人は目的地を行き来する。ロックダウン中・隔離区画の中は、いまと同じ速度倍率で遅くなる
+ * （止まったぶん予定が遅れるだけで、行き先そのものは変えない）。
+ */
 function moveAgents(state: SimState, dt: number): void {
   const globalSpeed = state.lockdownTimer > 0 ? CONFIG.lockdownSpeedFactor : 1;
-  const gathering = state.gatherTimer > 0;
-  const cx = state.world.w / 2;
-  const cy = state.world.h / 2;
   const t = state.tuning;
   for (const a of state.agents) {
-    // 広げている本人は動きが変わる。
-    // 怒りは速く直進し、噂はあちこち動き回る。
+    updateAgentPurpose(state, a);
+
+    // 広げている本人は動きが速い（怒りモードなど）。移動中・滞在中のどちらにも掛かる
     const active = a.state === 'infected';
-    const turn = t.turnRate * (active ? t.activeTurnMul : 1);
-    a.dir += rand(state.rng, -turn, turn) * dt;
-    // 大型イベント中は中央へ引き寄せる。隔離された人は動けない
-    if (gathering && a.zone < 0) {
-      const want = Math.atan2(cy - a.y, cx - a.x);
-      let diff = want - a.dir;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      a.dir += diff * WAVE_EFFECT.gatheringPull * dt;
-    }
-    const mul =
-      globalSpeed *
-      (a.zone >= 0 ? CONFIG.zoneSpeedFactor : 1) *
-      (active ? t.activeSpeedMul : 1);
+    const mul = globalSpeed * (a.zone >= 0 ? CONFIG.zoneSpeedFactor : 1) * (active ? t.activeSpeedMul : 1);
     const v = a.speed * mul;
-    a.x += Math.cos(a.dir) * v * dt;
-    a.y += Math.sin(a.dir) * v * dt;
-    bounceWorld(a, state.world);
+
+    if (!a.arrived && a.path.length > 0) {
+      followPath(a, v, dt);
+    } else {
+      wanderInPlace(state, a, v, dt, active);
+    }
+
+    // 経路のずらしや境界の丸めで、まれに建物の中に入り込むことがある。念のため押し戻す
+    const pushed = pushOutOfHouses(state.city, a, CONFIG.agentRadius);
+    a.x = pushed.x;
+    a.y = pushed.y;
+
     updateZoneMembership(a, state);
     if (a.flash > 0) a.flash = Math.max(0, a.flash - dt * 1.6);
     if (a.immunity > 0) a.immunity = Math.max(0, a.immunity - dt);
@@ -294,6 +468,15 @@ export function drift(state: SimState, dt: number): void {
 export function step(state: SimState, dt: number): void {
   state.time += dt;
   state.timeLeft = Math.max(0, CONFIG.duration - state.time);
+
+  // 時間帯の切り替わりを知らせる。ウェーブの通知と同じ枠（state.notice）を使うため、
+  // 同じフレームで両方起きても上書きされるだけで壊れない
+  const nextPeriod = periodOf(state.time);
+  if (nextPeriod !== state.period) {
+    state.period = nextPeriod;
+    const n = periodNoticeOf(nextPeriod);
+    pushNotice(state, n.title, n.detail, 'good');
+  }
 
   applyWaves(state);
   updateSocial(state, dt);
@@ -367,7 +550,13 @@ export function step(state: SimState, dt: number): void {
       const resist = a.immunity > 0 ? CONFIG.immunityFactor : 1;
       const lockdown = state.lockdownTimer > 0 ? CONFIG.lockdownTransmissionFactor : 1;
       a.exposure +=
-        state.tuning.exposureGain * state.transmissionMul * lockdown * stack * resist * dt;
+        state.tuning.exposureGain *
+        CONFIG.exposureScale *
+        state.transmissionMul *
+        lockdown *
+        stack *
+        resist *
+        dt;
       if (a.exposure >= CONFIG.exposureThreshold) {
         if (state.rng.next() < CONFIG.infectionChance) {
           infect(a, state);

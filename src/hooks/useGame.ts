@@ -13,7 +13,7 @@ import {
   step,
   triggerLockdown,
 } from '../sim/engine';
-import type { GameResult, ModeId, Notice, Phase, SimState, ToolId } from '../sim/types';
+import type { GameResult, ModeId, Notice, Period, Phase, SimState, ToolId } from '../sim/types';
 import { createRenderer, type Preview, type Renderer } from '../render/draw';
 import { computeView, screenToWorld } from '../render/view';
 
@@ -43,6 +43,8 @@ export interface HudSnapshot {
   resistanceMul: number;
   /** 大型イベントで人が集まっている残り時間 */
   gatherTimer: number;
+  /** 今の時間帯 */
+  period: Period;
 }
 
 export interface Toast {
@@ -67,6 +69,7 @@ const EMPTY_HUD: HudSnapshot = {
   transmissionMul: 1,
   resistanceMul: 1,
   gatherTimer: 0,
+  period: 'morning',
 };
 
 function snapshot(sim: SimState): HudSnapshot {
@@ -86,6 +89,7 @@ function snapshot(sim: SimState): HudSnapshot {
     transmissionMul: sim.transmissionMul,
     resistanceMul: sim.resistanceMul,
     gatherTimer: sim.gatherTimer,
+    period: sim.period,
   };
 }
 

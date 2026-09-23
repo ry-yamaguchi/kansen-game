@@ -1,7 +1,15 @@
 import { CONFIG } from '../sim/config';
-import type { SimState } from '../sim/types';
+import type { BlockRole, SimState } from '../sim/types';
 import { createCharacterRenderer } from './characters';
 import type { View } from './view';
+
+/** 場所（住宅以外）に添える名前 */
+const PLACE_LABELS: Partial<Record<BlockRole, string>> = {
+  plaza: '広場',
+  station: '駅',
+  school: '学校',
+  work: '職場',
+};
 
 /** 設置プレビュー。指の位置に何が起きるかを事前に見せる */
 export interface Preview {
@@ -74,6 +82,46 @@ export function createRenderer(): Renderer {
     ctx.strokeStyle = 'rgba(45,212,191,0.22)';
     ctx.lineWidth = 1;
     ctx.strokeRect(view.ox + 0.5, view.oy + 0.5, w - 1, h - 1);
+  }
+
+  /**
+   * 街の区画を描く。住宅は暗い塗り（通れない）、場所（広場・駅・学校・職場）は薄い色に名前を添える。
+   * 人より先に描き、人が上に乗って見えるようにする。
+   */
+  function drawCity(ctx: CanvasRenderingContext2D, state: SimState, view: View): void {
+    for (const b of state.city.blocks) {
+      const x = view.ox + b.x * view.scale;
+      const y = view.oy + b.y * view.scale;
+      const w = b.w * view.scale;
+      const h = b.h * view.scale;
+
+      if (b.role === 'house') {
+        ctx.fillStyle = 'rgba(4,7,15,0.82)';
+        ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = 'rgba(45,212,191,0.07)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+        continue;
+      }
+
+      ctx.fillStyle = 'rgba(45,212,191,0.08)';
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = 'rgba(45,212,191,0.2)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+
+      const label = PLACE_LABELS[b.role];
+      if (label) {
+        ctx.fillStyle = 'rgba(226,232,240,0.6)';
+        ctx.font = '600 12px system-ui, -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, x + w / 2, y + h / 2);
+      }
+    }
+    // 既定へ戻す。あとの描画（プレビューの内訳など）は左揃え・alphabetic を前提にしている
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
   }
 
   function drawZones(ctx: CanvasRenderingContext2D, state: SimState, view: View): void {
@@ -238,6 +286,7 @@ export function createRenderer(): Renderer {
   return {
     draw(ctx, state, view, cssWidth, cssHeight, preview, elapsed) {
       drawField(ctx, state, view, cssWidth, cssHeight);
+      drawCity(ctx, state, view);
       drawZones(ctx, state, view);
       drawLinks(ctx, state, view);
       drawAgents(ctx, state, view);

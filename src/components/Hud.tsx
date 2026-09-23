@@ -1,7 +1,9 @@
 import { CONFIG } from '../sim/config';
 import { modeOf } from '../sim/modes';
-import type { ModeId } from '../sim/types';
+import type { ModeId, Period } from '../sim/types';
 import type { HudSnapshot } from '../hooks/useGame';
+
+const PERIOD_LABEL: Record<Period, string> = { morning: '朝', noon: '昼', evening: '夕方' };
 
 interface Props {
   hud: HudSnapshot;
@@ -36,6 +38,8 @@ export function Hud({ hud, mode }: Props) {
   const urgent = seconds <= 10;
 
   const badges: { key: string; text: string; tone: string }[] = [];
+  // 今の時間帯を小さく出す。スマートフォンでも崩れないよう、既存の badges の枠に乗せる
+  badges.push({ key: 'period', text: PERIOD_LABEL[hud.period], tone: 'info' });
   // 打ち切りが近いことは最優先で知らせる。突然終わったと感じさせない
   if (def.collapseRatio !== undefined && infectedRatio >= def.collapseRatio * 0.7) {
     const remain = Math.max(0, Math.ceil(def.collapseRatio * hud.population - hud.infected));

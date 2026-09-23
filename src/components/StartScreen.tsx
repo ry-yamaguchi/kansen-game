@@ -57,6 +57,11 @@ export function StartScreen({ mode, onSelectMode, onStart }: Props) {
           {def.states.susceptible}に戻ります。
         </p>
 
+        <p className="panel__note">
+          街には住宅・学校・職場・広場・駅があります。朝は学校や職場へ、昼は広場へ、
+          夕方は家へと、時間帯によって人が街を行き来します。
+        </p>
+
         <ol className="howto">
           <li>下のボタンで対策を選びます</li>
           <li>画面を押したまま動かすと、効果の範囲が見えます</li>

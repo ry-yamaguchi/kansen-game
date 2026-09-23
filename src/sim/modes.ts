@@ -100,8 +100,10 @@ const EPIDEMIC: ModeDef = {
     spreadMax: 14.5,
     // 回復しても長くは守られない。放っておくと、同じ人がまた感染源になる
     resistanceDuration: 7,
-    speedMin: 34,
-    speedMax: 58,
+    // 盤面（長辺1000）の端から端まで10秒前後で歩ける速さ。街への作り直し（2026-09-24）で
+    // 従来値から約2.17倍に上げた。モード間の相対差はそのまま保っている
+    speedMin: 74,
+    speedMax: 126,
     turnRate: 2.2,
     activeSpeedMul: 1,
     activeTurnMul: 1,
@@ -179,8 +181,9 @@ const RUMOR: ModeDef = {
     spreadMax: 12.5,
     // 飽きてもそこそこ早く戻ってくる。噂は一度で終わらない
     resistanceDuration: 12,
-    speedMin: 40,
-    speedMax: 72,
+    // epidemic と同じ比率（約2.17倍）で引き上げてある
+    speedMin: 87,
+    speedMax: 157,
     turnRate: 2.6,
     activeSpeedMul: 1.1,
     // 噂している人はあちこち動き回る
@@ -256,8 +259,9 @@ const ANGER: ModeDef = {
     spreadMax: 11,
     // すぐ再燃する。冷めても安心できない
     resistanceDuration: 5,
-    speedMin: 30,
-    speedMax: 52,
+    // epidemic と同じ比率（約2.17倍）で引き上げてある
+    speedMin: 65,
+    speedMax: 113,
     turnRate: 3,
     // 怒っている人は速く、まっすぐ突き進む
     activeSpeedMul: 1.6,

@@ -8,10 +8,24 @@ export const CONFIG = {
   /** 1ゲームの長さ（秒） */
   duration: 75,
   /** 初期感染者数 */
-  initialInfected: 3,
+  initialInfected: 2,
 
   // --- エージェント ---
   agentRadius: 6.5,
+
+  // --- 街 ---
+  /** 通りの幅。世界の短辺に対する比率 */
+  streetWidthRatio: 0.12,
+  /** 出発時刻の個人差の最大値（秒）。全員が一斉に動き出さないようにする */
+  departureJitterMax: 6,
+  /** 昼に広場でなく駅へ向かう人の割合 */
+  noonStationRatio: 0.2,
+
+  // --- 時間帯 ---
+  /** 朝が終わる時刻（秒） */
+  periodMorningEnd: 25,
+  /** 昼が終わる時刻（秒）。これ以降は夕方 */
+  periodNoonEnd: 50,
 
   // --- 感染 ---
   // 接触距離・伝播力・持続時間・速度はモードごとに違うため
@@ -20,6 +34,11 @@ export const CONFIG = {
   exposureDecay: 0.5,
   /** この値を超えると感染判定 */
   exposureThreshold: 1,
+  /**
+   * 感染の速さの全体倍率。モードごとの exposureGain の差は保ったまま、全体の速さだけを合わせる。
+   * 街では人が学校・職場・広場に集まり、何もない平面より接触が数倍に増えるため、ここで釣り合わせる
+   */
+  exposureScale: 0.25,
   /** しきい値到達時に実際に感染する確率 */
   infectionChance: 0.9,
   /** 同時に効く感染者数の上限（密集地帯での爆発を抑える） */
@@ -197,18 +216,13 @@ export const COLORS = {
 /**
  * 画面サイズから世界の大きさと人数を決める。
  *
- * 盤面の広さと人数は、画面の大きさによらず一定にする。変えるのは縦横比だけで、
- * 小さい画面では描くときに縮めて収める。
- * 密度さえ揃えれば同じゲームになる、とはならない。小さい画面に小さい盤面（60人）を
- * 用意していたときは、人数が少ないぶん感染の山が揺れやすく、同じ腕でも崩壊が
- * 2〜3倍多かった（2026-09-23、100試合ずつの計測で確認）。
+ * 街の形は毎回同じにする（駅や広場の位置を覚えて、守り方を磨けるようにするため）。
+ * 世界の大きさは横長 1000×600・縦長 600×1000 の2種類だけで、画面の高さが幅より
+ * 大きいときだけ縦長にする。中間の縦横比では余白ができるが、街の形を保つほうを優先する。
+ * 人数は30人（2026-09-23、街と目的地のある盤面への作り直しで85人から減らした）。
  */
 export function planWorld(cssWidth: number, cssHeight: number): { world: World; population: number } {
-  const area = 690_000;
-  const population = 85;
-  const rawAspect = cssWidth / Math.max(1, cssHeight);
-  const aspect = Math.min(2.1, Math.max(0.52, rawAspect));
-  const h = Math.sqrt(area / aspect);
-  const w = area / h;
-  return { world: { w: Math.round(w), h: Math.round(h) }, population };
+  const population = 30;
+  const world: World = cssHeight > cssWidth ? { w: 600, h: 1000 } : { w: 1000, h: 600 };
+  return { world, population };
 }
