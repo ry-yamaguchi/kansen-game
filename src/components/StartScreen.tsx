@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { CONFIG } from '../sim/config';
 import { MODE_LIST, modeOf } from '../sim/modes';
 import type { ModeId } from '../sim/types';
@@ -10,6 +11,13 @@ interface Props {
 
 export function StartScreen({ mode, onSelectMode, onStart }: Props) {
   const def = modeOf(mode);
+  const startRef = useRef<HTMLButtonElement>(null);
+
+  // Enter ですぐ始められるよう開始ボタンに焦点を当てる。ただしスクロールはさせない。
+  // 画面が低いと、焦点に合わせて下まで流れ、上にあるモードの選択肢が見えなくなるため
+  useEffect(() => {
+    startRef.current?.focus({ preventScroll: true });
+  }, []);
 
   return (
     <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="start-title">
@@ -61,7 +69,7 @@ export function StartScreen({ mode, onSelectMode, onStart }: Props) {
           どちらかに振り切っても点になりません。
         </p>
 
-        <button type="button" className="cta" onClick={onStart} autoFocus>
+        <button ref={startRef} type="button" className="cta" onClick={onStart}>
           {CONFIG.duration} 秒で開始
         </button>
       </div>
