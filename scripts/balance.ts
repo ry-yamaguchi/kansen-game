@@ -43,8 +43,23 @@ interface Trial {
  * actIntervalSec が行動の頻度（何秒に1回 act() を呼ぶか）。これを引数にすることで
  * 「手数を増やせば強いのか」を測れるようにしている。
  */
-function runGame(strategy: Strategy, mode: ModeId, seed: number, actIntervalSec: number): Trial {
-  const { world, population } = planWorld(1280, 720);
+/** 盤面を決める画面の大きさ。planWorld はこれで人数と縦横比を決める */
+interface Screen {
+  w: number;
+  h: number;
+}
+const PC: Screen = { w: 1280, h: 720 };
+// スマートフォン縦持ちの盤面。人数と広さは PC と同じで、縦横比だけが違う
+const PHONE: Screen = { w: 375, h: 560 };
+
+function runGame(
+  strategy: Strategy,
+  mode: ModeId,
+  seed: number,
+  actIntervalSec: number,
+  screen: Screen = PC,
+): Trial {
+  const { world, population } = planWorld(screen.w, screen.h);
   const sim = createSim(world, population, mode, seed);
   const steps = Math.ceil(CONFIG.duration / DT);
   const actEverySteps = Math.max(1, Math.round(actIntervalSec / DT));
@@ -245,10 +260,13 @@ function report(
   mode: ModeId,
   actIntervalSec: number,
   baselineScore?: number,
+  screen: Screen = PC,
 ): number {
   const out: Trial[] = [];
   // 試行ごとに固定シードを使うことで、balance の結果を再現可能にする
-  for (let i = 0; i < trials; i += 1) out.push(runGame(strategy, mode, 1000 + i, actIntervalSec));
+  for (let i = 0; i < trials; i += 1) {
+    out.push(runGame(strategy, mode, 1000 + i, actIntervalSec, screen));
+  }
 
   const prot = avg(out.map((t) => t.protection));
   const social = avg(out.map((t) => t.social));
@@ -312,4 +330,27 @@ for (const mode of MODES) {
   for (const freq of FREQUENCIES) {
     report(`${MODE_LABEL[mode]}・本気AI ${freq}秒`, TRIALS, 'smart', mode, freq, baseline);
   }
+}
+
+// 人間は0.5秒ごとに最善手を打てない。画面を見て、狙って、指を動かすまでに数秒かかる。
+// ここが崩れていると、数字の上では勝てても人間には理不尽なゲームになる
+const HUMAN_INTERVALS = [3, 5];
+console.log('=== 人間に近い反応の遅さ（3秒/5秒に1回） ===');
+for (const mode of MODES) {
+  const baseline = baselineScores.get(mode);
+  for (const freq of HUMAN_INTERVALS) {
+    report(`${MODE_LABEL[mode]}・本気AI ${freq}秒`, TRIALS, 'smart', mode, freq, baseline);
+  }
+  for (const freq of HUMAN_INTERVALS) {
+    report(`${MODE_LABEL[mode]}・簡易AI ${freq}秒`, TRIALS, 'greedy', mode, freq, baseline);
+  }
+}
+
+// スマートフォンは盤面が縦長。画面の形で別のゲームになっていないかを見張る
+console.log('=== スマートフォン（縦長） ===');
+for (const mode of MODES) {
+  const baseline = report(`${MODE_LABEL[mode]}・放置`, TRIALS, 'none', mode, DEFAULT_FREQ, undefined, PHONE);
+  report(`${MODE_LABEL[mode]}・本気AI 0.5秒`, TRIALS, 'smart', mode, DEFAULT_FREQ, baseline, PHONE);
+  report(`${MODE_LABEL[mode]}・本気AI 3秒`, TRIALS, 'smart', mode, 3, baseline, PHONE);
+  report(`${MODE_LABEL[mode]}・簡易AI 3秒`, TRIALS, 'greedy', mode, 3, baseline, PHONE);
 }

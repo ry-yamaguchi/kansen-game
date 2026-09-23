@@ -196,15 +196,16 @@ export const COLORS = {
 
 /**
  * 画面サイズから世界の大きさと人数を決める。
- * 面積あたりの人口密度をほぼ一定に保つことで、端末が変わっても
- * 感染の広がり方が大きく変わらないようにしている。
+ *
+ * 盤面の広さと人数は、画面の大きさによらず一定にする。変えるのは縦横比だけで、
+ * 小さい画面では描くときに縮めて収める。
+ * 密度さえ揃えれば同じゲームになる、とはならない。小さい画面に小さい盤面（60人）を
+ * 用意していたときは、人数が少ないぶん感染の山が揺れやすく、同じ腕でも崩壊が
+ * 2〜3倍多かった（2026-09-23、100試合ずつの計測で確認）。
  */
 export function planWorld(cssWidth: number, cssHeight: number): { world: World; population: number } {
-  // 文字を大きくしたぶん盤面の高さが削られるため、しきい値は低めにする。
-  // ここが高すぎると、通常のPCウィンドウでも小画面扱いになって人数が減る。
-  const compact = Math.min(cssWidth, cssHeight) < 430 || cssWidth < 700;
-  const area = compact ? 470_000 : 690_000;
-  const population = compact ? 60 : 85;
+  const area = 690_000;
+  const population = 85;
   const rawAspect = cssWidth / Math.max(1, cssHeight);
   const aspect = Math.min(2.1, Math.max(0.52, rawAspect));
   const h = Math.sqrt(area / aspect);
