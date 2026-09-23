@@ -126,12 +126,53 @@ function segmentHitsRect(
   return t0 <= t1;
 }
 
+/** 封鎖の円。経路探索は、これにかかる交差点と通りを通れないものとして避ける */
+export interface Blocker {
+  x: number;
+  y: number;
+  r: number;
+}
+
+/** 線分と円（半径に pad を足したもの）が交わるか。円の中心から線分までの最短距離で判定する */
+function segmentHitsCircle(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  c: Blocker,
+  pad: number,
+): boolean {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 > 0 ? ((c.x - x1) * dx + (c.y - y1) * dy) / len2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(c.x - (x1 + t * dx), c.y - (y1 + t * dy)) <= c.r + pad;
+}
+
+function segmentBlocked(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  blockers: readonly Blocker[],
+  pad: number,
+): boolean {
+  for (const b of blockers) if (segmentHitsCircle(x1, y1, x2, y2, b, pad)) return true;
+  return false;
+}
+
 /**
  * 点から直線で行ける、最も近い交差点を探す。
  * 住宅を突っ切る直線は選ばない（区画の角どうし・通りの中の点から通りの交差点へは
  * 常に直線で届くため、実際にはここで弾かれるのは稀である）。
  */
-function nearestReachableNode(city: City, point: { x: number; y: number }): CityNode {
+function nearestReachableNode(
+  city: City,
+  point: { x: number; y: number },
+  blockers: readonly Blocker[] = [],
+  pad = 0,
+): CityNode | null {
   let best: CityNode | null = null;
   let bestDist = Infinity;
   let closest = city.nodes[0][0];
@@ -144,7 +185,9 @@ function nearestReachableNode(city: City, point: { x: number; y: number }): City
         closest = node;
       }
       if (d < bestDist) {
-        const blocked = city.houses.some((h) => segmentHitsRect(point.x, point.y, node.x, node.y, h));
+        const blocked =
+          city.houses.some((h) => segmentHitsRect(point.x, point.y, node.x, node.y, h)) ||
+          segmentBlocked(point.x, point.y, node.x, node.y, blockers, pad);
         if (!blocked) {
           best = node;
           bestDist = d;
@@ -152,12 +195,20 @@ function nearestReachableNode(city: City, point: { x: number; y: number }): City
       }
     }
   }
-  // best が見つからないのは街の作りが壊れているときだけである。念のため最寄りへ逃がす
+  // 封鎖があるときは、届く交差点が無いこともある（封鎖の中・封鎖に囲まれた所）
+  if (blockers.length > 0) return best;
+  // 封鎖が無いのに見つからないのは街の作りが壊れているときだけである。念のため最寄りへ逃がす
   return best ?? closest;
 }
 
 /** 交差点の格子を4方向グラフとして辿る幅優先探索。既定は空にならない（from 自身を含む） */
-function bfsNodePath(city: City, from: CityNode, to: CityNode): CityNode[] {
+function bfsNodePath(
+  city: City,
+  from: CityNode,
+  to: CityNode,
+  blockers: readonly Blocker[] = [],
+  pad = 0,
+): CityNode[] | null {
   if (from.r === to.r && from.c === to.c) return [from];
   const width = city.cols + 1;
   const key = (r: number, c: number): number => r * width + c;
@@ -181,12 +232,18 @@ function bfsNodePath(city: City, from: CityNode, to: CityNode): CityNode[] {
       if (r < 0 || r > city.rows || c < 0 || c > city.cols) continue;
       const k = key(r, c);
       if (visited.has(k)) continue;
+      const next = city.nodes[r][c];
+      // 封鎖の円にかかる通り（交差点どうしを結ぶ線分）は通れない
+      if (blockers.length > 0 && segmentBlocked(cur.x, cur.y, next.x, next.y, blockers, pad)) continue;
       visited.add(k);
       prev.set(k, cur);
       queue.push(city.nodes[r][c]);
     }
   }
-  if (!visited.has(key(to.r, to.c))) return [from, to]; // 格子は必ず繋がっているため、理論上ここには来ない
+  if (!visited.has(key(to.r, to.c))) {
+    // 封鎖が無ければ格子は必ず繋がっている。封鎖で分断されたときは「行けない」を返す
+    return blockers.length > 0 ? null : [from, to];
+  }
 
   const path: CityNode[] = [];
   let cur: CityNode | undefined = city.nodes[to.r][to.c];
@@ -222,10 +279,17 @@ export function routeTo(
   from: { x: number; y: number },
   to: { x: number; y: number },
   lane: number,
-): { x: number; y: number }[] {
-  const entry = nearestReachableNode(city, from);
-  const exit = nearestReachableNode(city, to);
-  const nodePath = bfsNodePath(city, entry, exit);
+  blockers: readonly Blocker[] = [],
+): { x: number; y: number }[] | null {
+  // 通りの中の横ずれと人の大きさのぶん、封鎖の円を太らせて避ける
+  const pad = blockers.length > 0 ? city.streetWidth * 0.32 + 7 : 0;
+  // 目的地そのものが封鎖の中なら行けない
+  for (const b of blockers) if (Math.hypot(to.x - b.x, to.y - b.y) <= b.r) return null;
+  const entry = nearestReachableNode(city, from, blockers, pad);
+  const exit = nearestReachableNode(city, to, blockers, pad);
+  if (!entry || !exit) return null;
+  const nodePath = bfsNodePath(city, entry, exit, blockers, pad);
+  if (!nodePath) return null;
   const raw = [...nodePath.map((n) => ({ x: n.x, y: n.y })), { x: to.x, y: to.y }];
   return applyLane(raw, lane);
 }

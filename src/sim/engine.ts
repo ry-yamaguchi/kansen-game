@@ -1,9 +1,11 @@
 import { buildCity, homeSpots, pushOutOfHouses, randomPointInBlock, routeTo } from './city';
+import type { Blocker } from './city';
 import { CONFIG } from './config';
 import { WAVE_EFFECT, modeOf } from './modes';
 import { createRng } from './rng';
 import type { Rng } from './rng';
 import type {
+  CityBlock,
   Agent,
   City,
   GameResult,
@@ -69,6 +71,26 @@ function makeAgent(
     pathIndex: 0,
     targetX: home.x,
     targetY: home.y,
+    stay: homeStay(city, home.x, home.y),
+    blockedFor: 0,
+    redirected: false,
+  };
+}
+
+/** 家の前で留まる範囲（通りの中の小さな四角） */
+function homeStay(city: City, x: number, y: number): { x: number; y: number; w: number; h: number } {
+  const half = Math.min(HOME_WANDER_HALF, city.streetWidth * 0.42);
+  return { x: x - half, y: y - half, w: half * 2, h: half * 2 };
+}
+
+/** 場所の区画の中で留まる範囲（縁から少し内側） */
+function blockStay(block: CityBlock): { x: number; y: number; w: number; h: number } {
+  const pad = CONFIG.agentRadius * 1.4;
+  return {
+    x: block.x + pad,
+    y: block.y + pad,
+    w: Math.max(1, block.w - pad * 2),
+    h: Math.max(1, block.h - pad * 2),
   };
 }
 
@@ -108,15 +130,99 @@ function targetFor(state: SimState, a: Agent, purpose: Purpose): { x: number; y:
  * purpose を切り替え、新しい経路を計算する。経路は目的が変わったこのタイミングだけで作り、
  * 毎フレームは作り直さない。
  */
+/** 封鎖の円（経路探索に渡す形） */
+function blockersOf(state: SimState): Blocker[] {
+  return state.zones.map((z) => ({ x: z.x, y: z.y, r: z.r }));
+}
+
+/** 場所の区画の中心が封鎖の中なら、その場所は閉まっているとみなす */
+function isClosed(state: SimState, block: CityBlock): boolean {
+  const cx = block.x + block.w / 2;
+  const cy = block.y + block.h / 2;
+  return state.zones.some((z) => Math.hypot(cx - z.x, cy - z.y) <= z.r);
+}
+
+/** purpose に応じた本来の行き先の区画。家へ帰るときは null */
+function blockFor(state: SimState, a: Agent, purpose: Purpose): CityBlock | null {
+  const city = state.city;
+  switch (purpose) {
+    case 'commute':
+      return a.commuteRole === 'school' ? city.school : city.work;
+    case 'noon':
+      return a.noonToStation ? city.station : city.plaza;
+    case 'gather':
+      return city.plaza;
+    default:
+      return null;
+  }
+}
+
+interface TripCandidate {
+  x: number;
+  y: number;
+  stay: { x: number; y: number; w: number; h: number };
+}
+
+/**
+ * 行き先の候補を、行きたい順に並べる。
+ * 本来の行き先 → 家 → 開いている場所を近い順。封鎖で行けないときに順に試す。
+ * 封鎖の手前で待たせないための歯止めである（docs/design-city.md「前歴と歯止め」）
+ */
+function tripCandidates(state: SimState, a: Agent, purpose: Purpose): TripCandidate[] {
+  const out: TripCandidate[] = [];
+  const primary = blockFor(state, a, purpose);
+  if (primary) {
+    if (!isClosed(state, primary)) {
+      const p = targetFor(state, a, purpose);
+      out.push({ x: p.x, y: p.y, stay: blockStay(primary) });
+    }
+  }
+  out.push({ x: a.homeX, y: a.homeY, stay: homeStay(state.city, a.homeX, a.homeY) });
+  const city = state.city;
+  const others = [city.plaza, city.station, city.school, city.work]
+    .filter((b) => b !== primary && !isClosed(state, b))
+    .sort(
+      (b1, b2) =>
+        Math.hypot(b1.x + b1.w / 2 - a.x, b1.y + b1.h / 2 - a.y) -
+        Math.hypot(b2.x + b2.w / 2 - a.x, b2.y + b2.h / 2 - a.y),
+    );
+  for (const b of others) {
+    const p = randomPointInBlock(state.rng, b, BLOCK_MARGIN);
+    out.push({ x: p.x, y: p.y, stay: blockStay(b) });
+  }
+  return out;
+}
+
 function beginTrip(state: SimState, a: Agent, purpose: Purpose): void {
-  const target = targetFor(state, a, purpose);
-  a.path = routeTo(state.city, { x: a.x, y: a.y }, target, a.lane);
-  a.pathIndex = 0;
-  a.targetX = target.x;
-  a.targetY = target.y;
   a.purpose = purpose;
   a.pendingPurpose = null;
-  a.arrived = a.path.length === 0;
+  a.blockedFor = 0;
+  const blockers = blockersOf(state);
+  const candidates = tripCandidates(state, a, purpose);
+  for (let i = 0; i < candidates.length; i += 1) {
+    const c = candidates[i];
+    const path = routeTo(state.city, { x: a.x, y: a.y }, { x: c.x, y: c.y }, a.lane, blockers);
+    if (!path) continue;
+    a.path = path;
+    a.pathIndex = 0;
+    a.targetX = c.x;
+    a.targetY = c.y;
+    a.stay = c.stay;
+    a.arrived = path.length === 0;
+    // 本来の行き先（家へ帰るなら家）以外へ向かうなら、封鎖が消えたときに予定へ戻す
+    const primaryIsHome = blockFor(state, a, purpose) === null;
+    a.redirected = !(i === 0 && (primaryIsHome || !isClosed(state, blockFor(state, a, purpose)!)));
+    if (purpose === 'home' && i === 0) a.redirected = false;
+    return;
+  }
+  // どこへも行けない（封鎖に囲まれた）。封鎖の縁で待たず、いまいる所で小さく歩き回る
+  a.path = [];
+  a.pathIndex = 0;
+  a.targetX = a.x;
+  a.targetY = a.y;
+  a.stay = homeStay(state.city, a.x, a.y);
+  a.arrived = true;
+  a.redirected = true;
 }
 
 /**
@@ -179,7 +285,13 @@ function spawnInflow(state: SimState): void {
     agent.x = spawn.x;
     agent.y = spawn.y;
     agent.dir = state.rng.next() * TAU;
-    beginTrip(state, agent, purposeForPeriod(state, agent));
+    const inside = state.zones.find((z) => Math.hypot(agent.x - z.x, agent.y - z.y) <= z.r);
+    if (inside) {
+      agent.zone = inside.id;
+      agent.arrived = true;
+    } else {
+      beginTrip(state, agent, purposeForPeriod(state, agent));
+    }
     state.agents.push(agent);
     infect(agent, state);
     state.inflowTotal += 1;
@@ -316,29 +428,10 @@ function bounceRect(a: Agent, b: { x: number; y: number; w: number; h: number })
  * 滞在中に小さく歩き回る範囲。
  * home は家の前の通りの中に収まる大きさ、それ以外は目的の区画（学校・職場・広場・駅）の内側にする。
  */
-function wanderBounds(state: SimState, a: Agent): { x: number; y: number; w: number; h: number } {
-  if (a.purpose === 'home') {
-    const half = Math.min(HOME_WANDER_HALF, state.city.streetWidth * 0.42);
-    return { x: a.homeX - half, y: a.homeY - half, w: half * 2, h: half * 2 };
-  }
-  const city = state.city;
-  const block =
-    a.purpose === 'gather'
-      ? city.plaza
-      : a.purpose === 'commute'
-        ? a.commuteRole === 'school'
-          ? city.school
-          : city.work
-        : a.noonToStation
-          ? city.station
-          : city.plaza;
-  const pad = CONFIG.agentRadius * 1.4;
-  return {
-    x: block.x + pad,
-    y: block.y + pad,
-    w: Math.max(1, block.w - pad * 2),
-    h: Math.max(1, block.h - pad * 2),
-  };
+function wanderBounds(_state: SimState, a: Agent): { x: number; y: number; w: number; h: number } {
+  // 目的（purpose）ではなく、実際に向かった先で決める。封鎖で行き先を変えた人が、
+  // 本来の区画へ瞬間移動しないようにするため
+  return a.stay;
 }
 
 /** 経路をたどって進む。着いたら path を空にする */
@@ -370,6 +463,17 @@ function followPath(a: Agent, speed: number, dt: number): void {
 
 /** 目的地（または家の前）に着いた人を、その場で小さく歩き回らせる */
 function wanderInPlace(state: SimState, a: Agent, speed: number, dt: number, active: boolean): void {
+  if (a.zone >= 0) {
+    const z = state.zones.find((q) => q.id === a.zone);
+    if (z) {
+      a.dir += rand(state.rng, -2, 2) * dt;
+      const v = speed * WANDER_SPEED_MUL;
+      a.x += Math.cos(a.dir) * v * dt;
+      a.y += Math.sin(a.dir) * v * dt;
+      bounceRect(a, { x: z.x - z.r, y: z.y - z.r, w: z.r * 2, h: z.r * 2 });
+      return;
+    }
+  }
   const t = state.tuning;
   const turn = t.turnRate * (active ? t.activeTurnMul : 1);
   a.dir += rand(state.rng, -turn, turn) * dt;
@@ -380,30 +484,23 @@ function wanderInPlace(state: SimState, a: Agent, speed: number, dt: number, act
 }
 
 /**
- * いまどの隔離エリアの中にいるかを毎フレーム見直す。
+ * 封鎖（隔離エリア）の出入りを破っているか。
+ * 閉じ込められた人は自分の円の外へ、それ以外の人はどの円の中へも入れない。
  *
- * かつては所属者を閉じ込め、非所属者を外へ押し出す「壁」にしていたが、
- * それだと盤面の一部を塞いだぶん外側の密度が上がり、
- * 隔離するほど外の感染が増えるという逆効果になっていた。
- * いまは出入り自由な「接触を鈍らせる区画」として扱う。
+ * 2026-09-17 には、中の人を閉じ込め外の人を押し出す「壁」にして逆効果になった
+ * （塞いだぶん外が混み合い、隔離するほど外の感染が増えた）。いまは押し出さない。
+ * 外の人は経路探索で封鎖を避けて迂回し、行けなければ行き先を変える（tripCandidates）。
  */
-function updateZoneMembership(a: Agent, state: SimState): void {
-  a.zone = -1;
-  for (const z of state.zones) {
-    if (Math.hypot(a.x - z.x, a.y - z.y) <= z.r) {
-      a.zone = z.id;
-      return;
-    }
+function violatesBlockade(state: SimState, a: Agent): boolean {
+  if (a.zone >= 0) {
+    const own = state.zones.find((z) => z.id === a.zone);
+    return own ? Math.hypot(a.x - own.x, a.y - own.y) > own.r : false;
   }
+  return state.zones.some((z) => Math.hypot(a.x - z.x, a.y - z.y) < z.r);
 }
 
-/** 指定した id の区画の効き目（0〜1）。見つからなければ0 */
-function zoneEffectiveness(state: SimState, zoneId: number): number {
-  for (const z of state.zones) {
-    if (z.id === zoneId) return z.effectiveness;
-  }
-  return 0;
-}
+/** 行く手を阻まれ続けたら行き先を選び直すまでの秒数 */
+const BLOCKED_REROUTE_AFTER = 1;
 
 function recount(state: SimState): void {
   let s = 0;
@@ -430,14 +527,17 @@ function moveAgents(state: SimState, dt: number): void {
   const globalSpeed = state.lockdownTimer > 0 ? CONFIG.lockdownSpeedFactor : 1;
   const t = state.tuning;
   for (const a of state.agents) {
-    updateAgentPurpose(state, a);
+    // 閉じ込められている間は予定を進めない（封鎖が消えたら予定に戻す）
+    if (a.zone < 0) updateAgentPurpose(state, a);
+    const prevX = a.x;
+    const prevY = a.y;
 
     // 広げている本人は動きが速い（怒りモードなど）。移動中・滞在中のどちらにも掛かる
     const active = a.state === 'infected';
     const mul = globalSpeed * (a.zone >= 0 ? CONFIG.zoneSpeedFactor : 1) * (active ? t.activeSpeedMul : 1);
     const v = a.speed * mul;
 
-    if (!a.arrived && a.path.length > 0) {
+    if (a.zone < 0 && !a.arrived && a.path.length > 0) {
       followPath(a, v, dt);
     } else {
       wanderInPlace(state, a, v, dt, active);
@@ -448,7 +548,18 @@ function moveAgents(state: SimState, dt: number): void {
     a.x = pushed.x;
     a.y = pushed.y;
 
-    updateZoneMembership(a, state);
+    // 封鎖の出入りを破る一歩は取り消す。行く手を阻まれ続けたら行き先を選び直す
+    if (violatesBlockade(state, a)) {
+      a.x = prevX;
+      a.y = prevY;
+      a.dir += Math.PI;
+      if (a.zone < 0) {
+        a.blockedFor += dt;
+        if (a.blockedFor >= BLOCKED_REROUTE_AFTER) beginTrip(state, a, a.purpose);
+      }
+    } else {
+      a.blockedFor = 0;
+    }
     if (a.flash > 0) a.flash = Math.max(0, a.flash - dt * 1.6);
     if (a.immunity > 0) a.immunity = Math.max(0, a.immunity - dt);
     a.contacts = 0;
@@ -499,9 +610,16 @@ export function step(state: SimState, dt: number): void {
     const z = state.zones[i];
     z.life -= dt;
     if (z.life <= 0) {
-      for (const a of state.agents) if (a.zone === z.id) a.zone = -1;
       state.pulses.push({ x: z.x, y: z.y, r: z.r, age: 0, ttl: 0.6, kind: 'zone-expire' });
       state.zones.splice(i, 1);
+      for (const a of state.agents) {
+        if (a.zone === z.id) {
+          a.zone = -1;
+          beginTrip(state, a, purposeForPeriod(state, a));
+        } else if (a.zone < 0 && a.redirected) {
+          beginTrip(state, a, a.purpose);
+        }
+      }
     }
   }
 
@@ -530,13 +648,10 @@ export function step(state: SimState, dt: number): void {
       const dy = a.y - b.y;
       const d2 = dx * dx + dy * dy;
       if (d2 > cr2) continue;
+      // 封鎖の境界をまたいだ接触は起きない。中の人どうし・外の人どうしは普通に接触する
+      if (a.zone !== b.zone) continue;
       b.contacts += 1;
-      // どちらかが隔離区画の中なら、接触が制限されて感染圧が下がる。
-      // 効き目は区画ごとの effectiveness（0〜1、上記 zoneEffectiveness）で按分する。
-      const aEff = a.zone >= 0 ? zoneEffectiveness(state, a.zone) : 0;
-      const bEff = b.zone >= 0 ? zoneEffectiveness(state, b.zone) : 0;
-      const eff = Math.max(aEff, bEff);
-      b.load += eff > 0 ? 1 - eff * (1 - CONFIG.zoneContactFactor) : 1;
+      b.load += 1;
       if (state.links.length < 240) state.links.push(i, j);
     }
   }
@@ -639,21 +754,23 @@ export function placeIsolation(state: SimState, x: number, y: number): boolean {
   const id = state.nextZoneId;
   state.nextZoneId += 1;
   const r = CONFIG.zoneRadius;
-  // 設置した瞬間に範囲内で何人の感染者を捕まえたかで、この区画の効き目を決める。
-  // 4人以上で満点、それ未満は按分、0人なら効かない。
-  // 隔離は「固まった感染者の封じ込め」の道具であり、狙って置いたときだけ強い。
-  // どこに置いても効くと、盤面を読まずに置き続けるのが最善になってしまう。
-  const FULL_EFFECT_CATCH = 4;
-  let caught = 0;
-  for (const a of state.agents) {
-    if (a.state === 'infected' && Math.hypot(a.x - x, a.y - y) <= r) caught += 1;
-  }
-  const effectiveness = Math.min(1, caught / FULL_EFFECT_CATCH);
-  const zone = { id, x, y, r, life: CONFIG.zoneLife, maxLife: CONFIG.zoneLife, effectiveness };
+  const zone = { id, x, y, r, life: CONFIG.zoneLife, maxLife: CONFIG.zoneLife };
   state.zones.push(zone);
+  // 円の中にいた人は閉じ込める。封鎖が消えるまで変わらない
   for (const a of state.agents) {
     if (a.zone !== -1) continue;
-    if (Math.hypot(a.x - x, a.y - y) <= zone.r - CONFIG.agentRadius) a.zone = id;
+    if (Math.hypot(a.x - x, a.y - y) <= r) {
+      a.zone = id;
+      a.path = [];
+      a.pathIndex = 0;
+      a.arrived = true;
+    }
+  }
+  // 外の人のうち、封鎖に行く手を塞がれうる人（移動中・行き先が円の中）だけ経路を引き直す
+  for (const a of state.agents) {
+    if (a.zone !== -1) continue;
+    const targetInside = Math.hypot(a.targetX - x, a.targetY - y) <= r;
+    if (!a.arrived || targetInside) beginTrip(state, a, a.purpose);
   }
   state.actions.isolation += 1;
   return true;

@@ -69,6 +69,12 @@ export interface Agent {
   /** 今回の目的地（滞在中はこの点を中心に小さく歩き回る） */
   targetX: number;
   targetY: number;
+  /** 着いたあとに歩き回る範囲（実際の行き先から決める。封鎖で行き先を変えた人もここに留まる） */
+  stay: { x: number; y: number; w: number; h: number };
+  /** 封鎖に行く手を阻まれている時間（秒）。長く続いたら行き先を選び直す */
+  blockedFor: number;
+  /** 封鎖のせいで本来の行き先と違う所へ向かっている。封鎖が消えたら予定に戻す */
+  redirected: boolean;
 }
 
 export type BlockRole = 'house' | 'plaza' | 'station' | 'school' | 'work';
@@ -119,13 +125,6 @@ export interface IsolationZone {
   /** 残り持続時間（秒） */
   life: number;
   maxLife: number;
-  /**
-   * 設置した瞬間に範囲内に捕まえていた感染者数に応じた効き目（0〜1）。
-   * 隔離は「既に固まった感染者の封じ込め」であり、狙って置いたときだけ効く道具にするための値。
-   * 4人以上捕まえていれば1、1〜3人なら按分、0人なら0。感染者がいない場所へ置いた区画は、あとから感染者が
-   * 迷い込んでも効き目は上がらない（寿命の間ずっと固定。狙った瞬間の良し悪しで決まる）。
-   */
-  effectiveness: number;
 }
 
 export type PulseKind = 'vaccine' | 'zone-expire' | 'outbreak';

@@ -78,7 +78,7 @@ const EPIDEMIC: ModeDef = {
     isolation: {
       label: '隔離エリア',
       short: '隔離',
-      hint: '感染者が多い所ほど効きます。社会活動が下がります',
+      hint: '出入りを止めます。中の人どうしはうつり合います',
     },
     vaccine: {
       label: 'ワクチン',
@@ -156,7 +156,7 @@ const RUMOR: ModeDef = {
     isolation: {
       label: '箝口令',
       short: '箝口令',
-      hint: '噂している人が多い所ほど効きます。信頼が下がります',
+      hint: '噂の出入りを止めます。中では話が回ります',
     },
     vaccine: {
       label: '訂正情報',
@@ -237,7 +237,7 @@ const ANGER: ModeDef = {
     isolation: {
       label: 'クールダウン区域',
       short: '冷却',
-      hint: '怒っている人が多い所ほど効きます。空気が重くなります',
+      hint: '人の出入りを止めます。中では気持ちが伝わります',
     },
     vaccine: {
       label: '対話・仲裁',

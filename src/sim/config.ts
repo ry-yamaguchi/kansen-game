@@ -61,11 +61,6 @@ export const CONFIG = {
   zoneLife: 18,
   /** 隔離中の移動速度倍率 */
   zoneSpeedFactor: 0.24,
-  /**
-   * 隔離中は接触も制限されるため、感染圧に掛ける倍率。
-   * ここを効かせないと、隔離が「健康な人を感染者と閉じ込める罠」になってしまう。
-   */
-  zoneContactFactor: 0.08,
 
   // --- ワクチン／治療エリア ---
   vaccineRadius: 84,
