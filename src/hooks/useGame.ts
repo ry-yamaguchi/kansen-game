@@ -133,7 +133,9 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
   const reset = useCallback(() => {
     const { w, h } = sizeRef.current;
     const { world, population } = planWorld(w || 1000, h || 640);
-    simRef.current = createSim(world, population, modeRef.current);
+    // 乱数の発生源は UI 側に置く。シミュレーション自体は毎回渡されたシードで決定論的に動く
+    const seed = Math.floor(Math.random() * 2 ** 32);
+    simRef.current = createSim(world, population, modeRef.current, seed);
     previewRef.current = null;
     pointerActiveRef.current = false;
     setResult(null);

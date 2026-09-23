@@ -29,9 +29,9 @@ interface Trial {
   survived: number;
 }
 
-function runGame(strategy: Strategy, mode: ModeId = 'epidemic'): Trial {
+function runGame(strategy: Strategy, mode: ModeId = 'epidemic', seed: number): Trial {
   const { world, population } = planWorld(1280, 720);
-  const sim = createSim(world, population, mode);
+  const sim = createSim(world, population, mode, seed);
   const steps = Math.ceil(CONFIG.duration / DT);
   for (let i = 0; i < steps; i += 1) {
     if (i % 30 === 0) act(sim, strategy);
@@ -119,7 +119,8 @@ const avg = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
 
 function report(label: string, trials: number, strategy: Strategy, mode: ModeId = 'epidemic'): void {
   const out: Trial[] = [];
-  for (let i = 0; i < trials; i += 1) out.push(runGame(strategy, mode));
+  // 試行ごとに固定シードを使うことで、balance の結果を再現可能にする
+  for (let i = 0; i < trials; i += 1) out.push(runGame(strategy, mode, 1000 + i));
   const prot = out.map((t) => t.protection);
   const collapsed = out.filter((t) => t.collapsed);
   console.log(

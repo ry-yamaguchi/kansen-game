@@ -1,21 +1,23 @@
 import { CONFIG } from './config';
 import { WAVE_EFFECT, modeOf } from './modes';
+import { createRng } from './rng';
+import type { Rng } from './rng';
 import type { Agent, GameResult, ModeId, SimState, Tuning, World } from './types';
 
 const TAU = Math.PI * 2;
 
-function rand(min: number, max: number): number {
-  return min + Math.random() * (max - min);
+function rand(rng: Rng, min: number, max: number): number {
+  return min + rng.next() * (max - min);
 }
 
-function makeAgent(id: number, world: World, tuning: Tuning): Agent {
+function makeAgent(id: number, world: World, tuning: Tuning, rng: Rng): Agent {
   const r = CONFIG.agentRadius;
   return {
     id,
-    x: rand(r, world.w - r),
-    y: rand(r, world.h - r),
-    dir: Math.random() * TAU,
-    speed: rand(tuning.speedMin, tuning.speedMax),
+    x: rand(rng, r, world.w - r),
+    y: rand(rng, r, world.h - r),
+    dir: rng.next() * TAU,
+    speed: rand(rng, tuning.speedMin, tuning.speedMax),
     state: 'susceptible',
     everInfected: false,
     infectionTimer: 0,
@@ -34,7 +36,7 @@ function infect(agent: Agent, state: SimState): void {
   agent.exposure = 0;
   agent.immunity = 0;
   agent.flash = 1;
-  agent.infectionTimer = rand(state.tuning.spreadMin, state.tuning.spreadMax);
+  agent.infectionTimer = rand(state.rng, state.tuning.spreadMin, state.tuning.spreadMax);
   state.totalInfected += 1;
 }
 
@@ -55,25 +57,25 @@ function spawnInflow(state: SimState): void {
   const r = CONFIG.agentRadius;
   for (let i = 0; i < count; i += 1) {
     if (state.agents.length >= CONFIG.maxPopulation) break;
-    const agent = makeAgent(state.agents.length, state.world, state.tuning);
+    const agent = makeAgent(state.agents.length, state.world, state.tuning, state.rng);
     // 4辺のどこかから、内側を向いて入ってくる
-    const side = Math.floor(Math.random() * 4);
+    const side = state.rng.int(4);
     if (side === 0) {
       agent.x = r;
-      agent.y = rand(r, state.world.h - r);
-      agent.dir = rand(-0.7, 0.7);
+      agent.y = rand(state.rng, r, state.world.h - r);
+      agent.dir = rand(state.rng, -0.7, 0.7);
     } else if (side === 1) {
       agent.x = state.world.w - r;
-      agent.y = rand(r, state.world.h - r);
-      agent.dir = Math.PI + rand(-0.7, 0.7);
+      agent.y = rand(state.rng, r, state.world.h - r);
+      agent.dir = Math.PI + rand(state.rng, -0.7, 0.7);
     } else if (side === 2) {
-      agent.x = rand(r, state.world.w - r);
+      agent.x = rand(state.rng, r, state.world.w - r);
       agent.y = r;
-      agent.dir = Math.PI / 2 + rand(-0.7, 0.7);
+      agent.dir = Math.PI / 2 + rand(state.rng, -0.7, 0.7);
     } else {
-      agent.x = rand(r, state.world.w - r);
+      agent.x = rand(state.rng, r, state.world.w - r);
       agent.y = state.world.h - r;
-      agent.dir = -Math.PI / 2 + rand(-0.7, 0.7);
+      agent.dir = -Math.PI / 2 + rand(state.rng, -0.7, 0.7);
     }
     state.agents.push(agent);
     infect(agent, state);
@@ -123,16 +125,23 @@ function updateSocial(state: SimState, dt: number): void {
   state.social = Math.max(0, Math.min(CONFIG.socialMax, state.social + delta * dt));
 }
 
-export function createSim(world: World, population: number, mode: ModeId = 'epidemic'): SimState {
+export function createSim(
+  world: World,
+  population: number,
+  mode: ModeId = 'epidemic',
+  seed: number,
+): SimState {
+  const rng = createRng(seed);
   const tuning = { ...modeOf(mode).tuning };
   const agents: Agent[] = [];
-  for (let i = 0; i < population; i += 1) agents.push(makeAgent(i, world, tuning));
+  for (let i = 0; i < population; i += 1) agents.push(makeAgent(i, world, tuning, rng));
 
   const state: SimState = {
     mode,
     tuning,
     world,
     agents,
+    rng,
     zones: [],
     pulses: [],
     links: [],
@@ -168,7 +177,7 @@ export function createSim(world: World, population: number, mode: ModeId = 'epid
   // 初期感染者は互いに離れた場所から始めて、複数のクラスタができるようにする
   const startIndexes = new Set<number>();
   while (startIndexes.size < Math.min(CONFIG.initialInfected, population)) {
-    startIndexes.add(Math.floor(Math.random() * population));
+    startIndexes.add(rng.int(population));
   }
   for (const i of startIndexes) infect(agents[i], state);
   state.totalInfected = startIndexes.size;
@@ -240,7 +249,7 @@ function moveAgents(state: SimState, dt: number): void {
     // 怒りは速く直進し、噂はあちこち動き回る。
     const active = a.state === 'infected';
     const turn = t.turnRate * (active ? t.activeTurnMul : 1);
-    a.dir += rand(-turn, turn) * dt;
+    a.dir += rand(state.rng, -turn, turn) * dt;
     // 大型イベント中は中央へ引き寄せる。隔離された人は動けない
     if (gathering && a.zone < 0) {
       const want = Math.atan2(cy - a.y, cx - a.x);
@@ -349,7 +358,7 @@ export function step(state: SimState, dt: number): void {
       a.exposure +=
         state.tuning.exposureGain * state.transmissionMul * lockdown * stack * resist * dt;
       if (a.exposure >= CONFIG.exposureThreshold) {
-        if (Math.random() < CONFIG.infectionChance) {
+        if (state.rng.next() < CONFIG.infectionChance) {
           infect(a, state);
           newInfections += 1;
         } else {
@@ -372,7 +381,7 @@ export function step(state: SimState, dt: number): void {
         // 回復直後は耐性があるが、永久ではない。
         // 個体ごとにばらすことで、全員の耐性が同時に切れて
         // 波が同期し、静かな時間だけが続くのを防ぐ。
-        a.immunity = state.tuning.resistanceDuration * state.resistanceMul * rand(0.6, 1.4);
+        a.immunity = state.tuning.resistanceDuration * state.resistanceMul * rand(state.rng, 0.6, 1.4);
       }
     } else if (a.state === 'recovered' && a.immunity <= 0) {
       // 耐性が切れたら未感染に戻る。これで盤面が回復者で埋まって終わらない

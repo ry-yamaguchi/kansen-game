@@ -1,5 +1,7 @@
 /** シミュレーションの型定義。DOM に依存しない純粋なデータ構造。 */
 
+import type { Rng } from './rng';
+
 export type AgentState = 'susceptible' | 'infected' | 'recovered';
 
 export interface Agent {
@@ -118,6 +120,8 @@ export interface SimState {
   tuning: Tuning;
   world: World;
   agents: Agent[];
+  /** このシミュレーション専用のシード付き乱数生成器。標準の乱数関数は使わない */
+  rng: Rng;
   zones: IsolationZone[];
   pulses: Pulse[];
   /** 描画用の接触ペア（[iのindex, jのindex, ...] のフラット配列） */
