@@ -163,6 +163,15 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
     selectTool('isolation');
   }, [reset, selectTool]);
 
+  /** 開始画面へ戻る。結果を見たあとにモードを選び直せるようにする */
+  const backToTitle = useCallback(() => {
+    phaseRef.current = 'ready';
+    setPhase('ready');
+    toolRef.current = null;
+    setTool(null);
+    reset();
+  }, [reset]);
+
   const finish = useCallback(() => {
     const sim = simRef.current;
     if (!sim) return;
@@ -434,6 +443,7 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
     result,
     toasts,
     start,
+    backToTitle,
     selectTool,
     useLockdown,
     onPointerDown,

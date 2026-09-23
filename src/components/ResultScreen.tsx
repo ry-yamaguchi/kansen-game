@@ -5,6 +5,7 @@ import type { GameResult } from '../sim/types';
 interface Props {
   result: GameResult;
   onRetry(): void;
+  onChangeMode(): void;
 }
 
 function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
@@ -16,7 +17,7 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
   );
 }
 
-export function ResultScreen({ result, onRetry }: Props) {
+export function ResultScreen({ result, onRetry, onChangeMode }: Props) {
   const retryRef = useRef<HTMLButtonElement>(null);
 
   // もう一度遊ぶのが最短でできるよう、開いた時点でボタンに焦点を当てる
@@ -97,6 +98,9 @@ export function ResultScreen({ result, onRetry }: Props) {
 
         <button ref={retryRef} type="button" className="cta" onClick={onRetry}>
           もう一度プレイ
+        </button>
+        <button type="button" className="cta cta--sub" onClick={onChangeMode}>
+          モードを選び直す
         </button>
       </div>
     </div>

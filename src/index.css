@@ -791,6 +791,17 @@ body {
   transform: scale(0.99);
 }
 
+/* 主ボタンの下に置く、控えめなもう1つの行き先 */
+.cta--sub {
+  margin-top: 8px;
+  padding: 10px;
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  color: inherit;
+  font-size: 0.98rem;
+  font-weight: 600;
+}
+
 /* ---------- 結果 ---------- */
 
 .verdict {
