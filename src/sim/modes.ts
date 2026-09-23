@@ -78,7 +78,7 @@ const EPIDEMIC: ModeDef = {
     isolation: {
       label: '隔離エリア',
       short: '隔離',
-      hint: '範囲の接触を鈍らせます。社会活動が下がります',
+      hint: '感染者が多い所ほど効きます。社会活動が下がります',
     },
     vaccine: {
       label: 'ワクチン',
@@ -91,14 +91,15 @@ const EPIDEMIC: ModeDef = {
       hint: '全員の移動と接触を8秒間抑えます',
     },
   },
-  // 同時に8割が感染したら医療が崩壊したものとして打ち切る
-  collapseRatio: 0.8,
+  // 同時に7割5分が感染したら医療が崩壊したものとして打ち切る
+  collapseRatio: 0.75,
   tuning: {
     contactRadius: 30,
     exposureGain: 1.8,
     spreadMin: 10,
     spreadMax: 14.5,
-    resistanceDuration: 9,
+    // 回復しても長くは守られない。放っておくと、同じ人がまた感染源になる
+    resistanceDuration: 7,
     speedMin: 34,
     speedMax: 58,
     turnRate: 2.2,
@@ -153,7 +154,7 @@ const RUMOR: ModeDef = {
     isolation: {
       label: '箝口令',
       short: '箝口令',
-      hint: '範囲の口を止めます。信頼が下がります',
+      hint: '噂している人が多い所ほど効きます。信頼が下がります',
     },
     vaccine: {
       label: '訂正情報',
@@ -166,15 +167,18 @@ const RUMOR: ModeDef = {
       hint: '街全体の話題を8秒間そらします',
     },
   },
+  // 同時に7割5分が噂をしていたら、収拾不能として打ち切る
+  collapseRatio: 0.75,
   tuning: {
     // 噂は離れていても伝わる。そのぶん1回の接触は弱い
     contactRadius: 44,
     exposureGain: 1.15,
-    // すぐ広まり、すぐ飽きる
-    spreadMin: 5.5,
-    spreadMax: 9,
-    // 一度飽きるとしばらく話さない
-    resistanceDuration: 15,
+    // 飽きるより前に、聞いた人がまた話す時間を確保する
+    // （放置すると鎮火が早すぎたため、やや伸ばした）
+    spreadMin: 8.5,
+    spreadMax: 12.5,
+    // 飽きてもそこそこ早く戻ってくる。噂は一度で終わらない
+    resistanceDuration: 12,
     speedMin: 40,
     speedMax: 72,
     turnRate: 2.6,
@@ -230,7 +234,7 @@ const ANGER: ModeDef = {
     isolation: {
       label: 'クールダウン区域',
       short: '冷却',
-      hint: '範囲の人を落ち着かせます。空気が重くなります',
+      hint: '怒っている人が多い所ほど効きます。空気が重くなります',
     },
     vaccine: {
       label: '対話・仲裁',
@@ -243,6 +247,8 @@ const ANGER: ModeDef = {
       hint: '街全体の動きを8秒間止めます',
     },
   },
+  // 同時に7割5分が怒っていたら、暴動として打ち切る
+  collapseRatio: 0.75,
   tuning: {
     contactRadius: 27,
     exposureGain: 2.2,

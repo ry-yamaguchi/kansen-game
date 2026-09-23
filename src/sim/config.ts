@@ -28,8 +28,9 @@ export const CONFIG = {
   // --- 対策ポイント ---
   startPoints: 110,
   /** 1秒あたりの自然回復量 */
-  pointRegen: 1.7,
-  maxPoints: 200,
+  pointRegen: 1.9,
+  // 上限は開始時と同じにする。使わずに貯めたポイントは溢れて消えるので、待つことにも代償がある
+  maxPoints: 110,
 
   // --- 隔離エリア ---
   /**
@@ -45,20 +46,20 @@ export const CONFIG = {
    * 隔離中は接触も制限されるため、感染圧に掛ける倍率。
    * ここを効かせないと、隔離が「健康な人を感染者と閉じ込める罠」になってしまう。
    */
-  zoneContactFactor: 0.12,
+  zoneContactFactor: 0.08,
 
   // --- ワクチン／治療エリア ---
   vaccineRadius: 84,
   /** 免疫の持続時間（秒） */
   immunityDuration: 12,
   /** 免疫中の接触蓄積の倍率 */
-  immunityFactor: 0.08,
+  immunityFactor: 0.05,
   /**
    * 感染者の残り感染時間に掛ける倍率（治療効果）。
    * ここを強くするとワクチンが万能になり、隔離を選ぶ理由が消える。
    * ワクチンは「予防」、隔離は「既に固まった感染者の封じ込め」と役割を分けている。
    */
-  treatFactor: 0.6,
+  treatFactor: 0.45,
 
   // --- 緊急ロックダウン ---
   lockdownDuration: 8,
@@ -74,7 +75,7 @@ export const CONFIG = {
    * 止めるだけでは、密集したまま固まって逆に感染が進んでしまう。
    * 距離を取らせる意味でここも下げる。
    */
-  lockdownTransmissionFactor: 0.4,
+  lockdownTransmissionFactor: 0.3,
 
   /** 開始前のカウントダウン（秒） */
   countdown: 3,

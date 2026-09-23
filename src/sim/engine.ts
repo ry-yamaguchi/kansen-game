@@ -222,6 +222,14 @@ function updateZoneMembership(a: Agent, state: SimState): void {
   }
 }
 
+/** 指定した id の区画の効き目（0〜1）。見つからなければ0 */
+function zoneEffectiveness(state: SimState, zoneId: number): number {
+  for (const z of state.zones) {
+    if (z.id === zoneId) return z.effectiveness;
+  }
+  return 0;
+}
+
 function recount(state: SimState): void {
   let s = 0;
   let i = 0;
@@ -340,9 +348,12 @@ export function step(state: SimState, dt: number): void {
       const d2 = dx * dx + dy * dy;
       if (d2 > cr2) continue;
       b.contacts += 1;
-      // どちらかが隔離区画の中なら、接触が制限されて感染圧が下がる
-      const damped = a.zone >= 0 || b.zone >= 0;
-      b.load += damped ? CONFIG.zoneContactFactor : 1;
+      // どちらかが隔離区画の中なら、接触が制限されて感染圧が下がる。
+      // 効き目は区画ごとの effectiveness（0〜1、上記 zoneEffectiveness）で按分する。
+      const aEff = a.zone >= 0 ? zoneEffectiveness(state, a.zone) : 0;
+      const bEff = b.zone >= 0 ? zoneEffectiveness(state, b.zone) : 0;
+      const eff = Math.max(aEff, bEff);
+      b.load += eff > 0 ? 1 - eff * (1 - CONFIG.zoneContactFactor) : 1;
       if (state.links.length < 240) state.links.push(i, j);
     }
   }
@@ -438,7 +449,18 @@ export function placeIsolation(state: SimState, x: number, y: number): boolean {
   if (!spend(state, CONFIG.costs.isolation)) return false;
   const id = state.nextZoneId;
   state.nextZoneId += 1;
-  const zone = { id, x, y, r: CONFIG.zoneRadius, life: CONFIG.zoneLife, maxLife: CONFIG.zoneLife };
+  const r = CONFIG.zoneRadius;
+  // 設置した瞬間に範囲内で何人の感染者を捕まえたかで、この区画の効き目を決める。
+  // 4人以上で満点、それ未満は按分、0人なら効かない。
+  // 隔離は「固まった感染者の封じ込め」の道具であり、狙って置いたときだけ強い。
+  // どこに置いても効くと、盤面を読まずに置き続けるのが最善になってしまう。
+  const FULL_EFFECT_CATCH = 4;
+  let caught = 0;
+  for (const a of state.agents) {
+    if (a.state === 'infected' && Math.hypot(a.x - x, a.y - y) <= r) caught += 1;
+  }
+  const effectiveness = Math.min(1, caught / FULL_EFFECT_CATCH);
+  const zone = { id, x, y, r, life: CONFIG.zoneLife, maxLife: CONFIG.zoneLife, effectiveness };
   state.zones.push(zone);
   for (const a of state.agents) {
     if (a.zone !== -1) continue;
