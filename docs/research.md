@@ -136,6 +136,37 @@
 
 ---
 
+## E. 広める側（エクストラステージ「新商品」）
+
+### E1. 行動は「複数の人に勧められて」広まる（複合的な伝染）
+
+- 分かっていること: 健康行動の広まりを調べたオンライン実験で、人は**複数の知り合いから勧められたとき**に
+  採り入れやすく、仲間どうしが固まったネットワークのほうが、遠くとつながるネットワークより速く遠くへ広まった。
+  1回の接触でうつる病気（単純な伝染）とは違う
+- 写し方: 新商品モードでは、**何人に勧められたら試すか**を一人ずつ持たせる。人が固まる場所で火がつく
+- 扱い: エクストラステージで**取り入れる**
+- 出典: [The Spread of Behavior in an Online Social Network Experiment（Science, 2010）](https://ndg.asc.upenn.edu/wp-content/uploads/2016/04/Centola-2010-Science.pdf)、
+  [Complex contagion（Wikipedia）](https://en.wikipedia.org/wiki/Complex_contagion)
+
+### E2. 採り入れる早さには人ごとの差がある（普及の5分類）
+
+- 分かっていること: 新しいものを採り入れる時期で人を分けると、新しもの好き約2.5%・初期採用者約13.5%・
+  前期多数派約34%・後期多数派約34%・慎重派約16%。初期採用者は周りに影響し、普及の鍵になる。累計はS字を描く
+- 写し方: 「何人に勧められたら試すか」をこの割合に沿って配る。人気者（インフルエンサー）の勧めは2人分と数える
+- 扱い: エクストラステージで**取り入れる**
+- 出典: [Rogers Diffusion of Innovations Curve（Umbrex）](https://umbrex.com/resources/frameworks/strategy-frameworks/rogers-diffusion-of-innovations-curve/)、
+  [Diffusion of Innovations（TheoryHub, Newcastle University）](https://open.ncl.ac.uk/theories/8/diffusion-of-innovations/)
+
+### E3. 押しつけると反発される（心理的リアクタンス）
+
+- 分かっていること: 避けられない押しつけの広告は「自由を脅かされた」と感じさせ、苛立ちと広告の回避を生む
+- 写し方: 広告は即効性があるが**好感度**を下げ、使うたびに効きが落ちる。好感度が低いと飽きやすく、試しにくくなる
+- 扱い: エクストラステージで**取り入れる**
+- 出典: [Forced Exposure and Psychological Reactance（Journal of Advertising）](https://www.tandfonline.com/doi/abs/10.1080/00913367.2002.10673678)、
+  [Understanding ad avoidance on Facebook（Computers in Human Behavior）](https://www.sciencedirect.com/science/article/abs/pii/S0747563219301736)
+
+---
+
 ## まとめ: モードごとの「どこで広がるか」
 
 | モード | よく広がる所                         | 守るべき所             | 根拠   |
