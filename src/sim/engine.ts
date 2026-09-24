@@ -2,6 +2,7 @@ import { buildCity, homeSpots, pushOutOfHouses, randomPointInBlock, routeTo } fr
 import type { Blocker } from './city';
 import { CONFIG } from './config';
 import { WAVE_EFFECT, modeOf } from './modes';
+import type { ModeDef } from './modes';
 import { createRng } from './rng';
 import type { Rng } from './rng';
 import type {
@@ -36,13 +37,14 @@ function rand(rng: Rng, min: number, max: number): number {
 
 function makeAgent(
   id: number,
+  mode: ModeId,
   tuning: Tuning,
   rng: Rng,
   city: City,
   homePool: { x: number; y: number }[],
 ): Agent {
   const home = homePool[rng.int(homePool.length)];
-  return {
+  const agent: Agent = {
     id,
     x: home.x,
     y: home.y,
@@ -81,7 +83,27 @@ function makeAgent(
     compliesLockdown: true,
 
     trait: null,
+
+    adoptThreshold: 0,
+    recommendedBy: [],
+    recommendProgress: [],
   };
+  // 新商品モードのときだけ「何人に勧められたら試すか」を引く。他モードのrng消費順を変えないよう、
+  // ここでモードを見てから呼ぶ（研究メモE1/E2）
+  if (mode === 'product') agent.adoptThreshold = drawAdoptThreshold(rng);
+  return agent;
+}
+
+/** 新商品モード専用: 普及の5分類の重みに沿って「何人に勧められたら試すか」（1〜4人）を引く */
+function drawAdoptThreshold(rng: Rng): number {
+  const weights = CONFIG.adoptThresholdWeights;
+  const roll = rng.next();
+  let acc = 0;
+  for (let i = 0; i < weights.length; i += 1) {
+    acc += weights[i];
+    if (roll < acc) return i + 1;
+  }
+  return weights.length; // 丸め誤差の保険（合計がわずかに1未満でも必ず値を返す）
 }
 
 /** 特性を配る順序。CONFIG.traitCounts の各人数ぶんだけ、この順に選ぶ（表の並びと合わせる） */
@@ -287,7 +309,30 @@ function infect(agent: Agent, state: SimState): void {
   agent.immunity = 0;
   agent.flash = 1;
   agent.infectionTimer = rand(state.rng, state.tuning.spreadMin, state.tuning.spreadMax);
+  // 新商品モード専用: 愛用中になったら「勧められた」記録は不要になる（他モードでは元々空なので無害）
+  agent.recommendedBy = [];
+  agent.recommendProgress = [];
   state.totalInfected += 1;
+}
+
+/**
+ * 新商品モード専用: 愛用中の人 a と未体験の人 b が接触半径内にいた時間を、相手ごとに積む。
+ * 合計 CONFIG.recommendTime に達したら recommendedBy へ移し、「勧められた」と数える
+ * （同じ人に何度勧められても1人と数えるため、以後はこの相手からの時間を積まない）。
+ * 配列だけで持つことで、決定論（記録の持ち方で順序が揺れないこと）を保つ。
+ */
+function accumulateRecommend(b: Agent, a: Agent, dt: number): void {
+  if (b.recommendedBy.includes(a.id)) return;
+  let entry = b.recommendProgress.find((p) => p.id === a.id);
+  if (!entry) {
+    entry = { id: a.id, seconds: 0 };
+    b.recommendProgress.push(entry);
+  }
+  entry.seconds += dt;
+  if (entry.seconds >= CONFIG.recommendTime) {
+    b.recommendedBy.push(a.id);
+    b.recommendProgress.splice(b.recommendProgress.indexOf(entry), 1);
+  }
 }
 
 /** 時間の進みに応じて 0..1 を返す。流入の強さを時間で変えるのに使う */
@@ -316,7 +361,7 @@ function spawnInflow(state: SimState): void {
   const homePool = homeSpots(state.city, HOME_DOORS_PER_HOUSE);
   for (let i = 0; i < count; i += 1) {
     if (state.agents.length >= CONFIG.maxPopulation) break;
-    const agent = makeAgent(state.agents.length, state.tuning, state.rng, state.city, homePool);
+    const agent = makeAgent(state.agents.length, state.mode, state.tuning, state.rng, state.city, homePool);
     const spawn = randomPointInBlock(state.rng, state.city.station, BLOCK_MARGIN);
     agent.x = spawn.x;
     agent.y = spawn.y;
@@ -329,7 +374,8 @@ function spawnInflow(state: SimState): void {
       beginTrip(state, agent, purposeForPeriod(state, agent));
     }
     state.agents.push(agent);
-    infect(agent, state);
+    // 新商品モードでは、駅から出てくる人は未体験のまま（感染者として送り込まない）
+    if (state.mode !== 'product') infect(agent, state);
     state.inflowTotal += 1;
   }
   // 時間が経つほど間隔が詰まる
@@ -389,7 +435,7 @@ export function createSim(
   const city = buildCity(world);
   const homePool = homeSpots(city, HOME_DOORS_PER_HOUSE);
   const agents: Agent[] = [];
-  for (let i = 0; i < population; i += 1) agents.push(makeAgent(i, tuning, rng, city, homePool));
+  for (let i = 0; i < population; i += 1) agents.push(makeAgent(i, mode, tuning, rng, city, homePool));
 
   const state: SimState = {
     mode,
@@ -726,11 +772,15 @@ export function step(state: SimState, dt: number): void {
   const moveW = state.tuning.moveContact;
   const agents = state.agents;
   const n = agents.length;
+  // 新商品モードだけ、感染の仕組みを複合的な伝染（複数の人に勧められて初めて試す）に切り替える。
+  // 他の3モードの接触判定・感染の進行はいっさい変えない（研究メモE1）
+  const isProduct = state.mode === 'product';
+  let newInfections = 0;
   for (let i = 0; i < n; i += 1) {
     const a = agents[i];
     if (a.state !== 'infected') continue;
-    // social: よく人と会う人は届く範囲が広く、1接触あたりの感染圧も重い（B1: 感染の2割が8割を広げる）
-    const social = a.trait === 'social';
+    // social: よく人と会う人は届く範囲が広い（B1）。新商品モードのこの区切りでは未対応のため広げない
+    const social = !isProduct && a.trait === 'social';
     const reach2 = social ? socialR2 : cr2;
     for (let j = 0; j < n; j += 1) {
       const b = agents[j];
@@ -742,41 +792,62 @@ export function step(state: SimState, dt: number): void {
       // 封鎖の境界をまたいだ接触は起きない。中の人どうし・外の人どうしは普通に接触する
       if (a.zone !== b.zone) continue;
       b.contacts += 1;
-      // 留まっている者どうしは重く、どちらかが移動中なら軽い。モードで変わる（B2/D1）
-      const w = a.arrived && b.arrived ? stayW : moveW;
-      b.load += social ? w * CONFIG.traitSocialLoadMul : w;
+      if (isProduct) {
+        // 複合的な伝染: 感染圧ではなく、勧められた人数（相手ごとの合計接触時間）を積む
+        accumulateRecommend(b, a, dt);
+      } else {
+        // 留まっている者どうしは重く、どちらかが移動中なら軽い。モードで変わる（B2/D1）
+        const w = a.arrived && b.arrived ? stayW : moveW;
+        b.load += social ? w * CONFIG.traitSocialLoadMul : w;
+      }
       if (state.links.length < 240) state.links.push(i, j);
     }
   }
 
-  // --- 感染の進行 ---
-  let newInfections = 0;
-  for (const a of agents) {
-    if (a.state !== 'susceptible') continue;
-    if (a.load > 0) {
-      const stack = Math.min(a.load, CONFIG.maxContactStack);
-      // 免疫の強さ（感染圧に掛ける倍率）はモードで変えられる。噂話は訂正情報の予防がよく効く（C2）
-      const resist = a.immunity > 0 ? CONFIG.immunityFactor * state.tuning.immunityMul : 1;
-      // ロックダウンによる感染圧の低下も、従う人にだけ掛かる（自粛疲れ。B5）
-      const lockdown = state.lockdownTimer > 0 && a.compliesLockdown ? CONFIG.lockdownTransmissionFactor : 1;
-      a.exposure +=
-        state.tuning.exposureGain *
-        CONFIG.exposureScale *
-        state.transmissionMul *
-        lockdown *
-        stack *
-        resist *
-        dt;
-      if (a.exposure >= CONFIG.exposureThreshold) {
-        if (state.rng.next() < CONFIG.infectionChance) {
-          infect(a, state);
-          newInfections += 1;
-        } else {
-          a.exposure = CONFIG.exposureThreshold * 0.45;
-        }
+  if (isProduct) {
+    // --- 複合的な伝染の判定（研究メモE1/E2） ---
+    // インフルエンサー（popular）に勧められたら2人分と数える。勧められた人数がadoptThreshold以上で試す
+    for (const b of agents) {
+      if (b.state !== 'susceptible') continue;
+      if (b.recommendedBy.length === 0) continue;
+      const count = b.recommendedBy.reduce(
+        (sum, id) => sum + (agents[id]?.trait === 'popular' ? 2 : 1),
+        0,
+      );
+      if (count >= b.adoptThreshold) {
+        infect(b, state);
+        newInfections += 1;
       }
-    } else if (a.exposure > 0) {
-      a.exposure = Math.max(0, a.exposure - CONFIG.exposureDecay * dt);
+    }
+  } else {
+    // --- 感染の進行 ---
+    for (const a of agents) {
+      if (a.state !== 'susceptible') continue;
+      if (a.load > 0) {
+        const stack = Math.min(a.load, CONFIG.maxContactStack);
+        // 免疫の強さ（感染圧に掛ける倍率）はモードで変えられる。噂話は訂正情報の予防がよく効く（C2）
+        const resist = a.immunity > 0 ? CONFIG.immunityFactor * state.tuning.immunityMul : 1;
+        // ロックダウンによる感染圧の低下も、従う人にだけ掛かる（自粛疲れ。B5）
+        const lockdown = state.lockdownTimer > 0 && a.compliesLockdown ? CONFIG.lockdownTransmissionFactor : 1;
+        a.exposure +=
+          state.tuning.exposureGain *
+          CONFIG.exposureScale *
+          state.transmissionMul *
+          lockdown *
+          stack *
+          resist *
+          dt;
+        if (a.exposure >= CONFIG.exposureThreshold) {
+          if (state.rng.next() < CONFIG.infectionChance) {
+            infect(a, state);
+            newInfections += 1;
+          } else {
+            a.exposure = CONFIG.exposureThreshold * 0.45;
+          }
+        }
+      } else if (a.exposure > 0) {
+        a.exposure = Math.max(0, a.exposure - CONFIG.exposureDecay * dt);
+      }
     }
   }
 
@@ -820,12 +891,25 @@ export function step(state: SimState, dt: number): void {
   state.socialSeconds += (state.social / CONFIG.socialMax) * dt;
 
   // --- 決着 ---
-  // 広がりが0でも終わらせない。手に負えなくなったか、時間切れかの2つだけ。
-  const collapse = modeOf(state.mode).collapseRatio;
-  if (collapse !== undefined && state.infected / pop >= collapse) {
-    state.outcome = 'collapsed';
-  } else if (state.timeLeft <= 0) {
-    state.outcome = 'timeup';
+  if (isProduct) {
+    // 新商品モードは真逆: 広がりが0（愛用中が誰もいない）になったら、定着せず負けとする。
+    // 同時の愛用率がboomRatio以上になったらブーム到来で勝ち。どちらでもなければ時間切れ。
+    const boomRatio = modeOf(state.mode).boomRatio;
+    if (boomRatio !== undefined && state.infected / pop >= boomRatio) {
+      state.outcome = 'boom';
+    } else if (state.infected === 0) {
+      state.outcome = 'fizzle';
+    } else if (state.timeLeft <= 0) {
+      state.outcome = 'timeup';
+    }
+  } else {
+    // 広がりが0でも終わらせない。手に負えなくなったか、時間切れかの2つだけ。
+    const collapse = modeOf(state.mode).collapseRatio;
+    if (collapse !== undefined && state.infected / pop >= collapse) {
+      state.outcome = 'collapsed';
+    } else if (state.timeLeft <= 0) {
+      state.outcome = 'timeup';
+    }
   }
 
   // --- 危険度（新規感染ペースと感染者比率の合成） ---
@@ -960,14 +1044,36 @@ function clamp01(v: number): number {
  * 感染の抑制と社会活動の維持を掛け算で評価する。
  * どちらかが床を割ると係数が0になり、もう片方が満点でも点にならない。
  * 「閉じ込めて終わり」も「見ているだけ」も成立させないための形である。
+ *
+ * 新商品モードは得点も真逆にする。「広めた量 × 好感度」であり、抑制の係数は普及の係数
+ * （一度でも試した割合）に、ピークの補正は同時の愛用が多いほど高くなる補正に変える。
+ * 社会係数（好感度）はそのまま使う。boomで終えたら残り時間に応じて上乗せする。
  */
 export function breakdownOf(state: SimState): GameResult['breakdown'] {
   const elapsed = Math.max(1, state.time);
-  const protectionRatio = state.healthySeconds / elapsed;
   const avgSocial = state.socialSeconds / elapsed;
   const pop = Math.max(1, state.agents.length);
-  const peakRatio = state.peakInfected / pop;
 
+  if (state.mode === 'product') {
+    const everInfectedRatio = state.agents.filter((a) => a.everInfected).length / pop;
+    const peakRatio = state.peakInfected / pop;
+    const boomBonus =
+      state.outcome === 'boom'
+        ? Math.round(CONFIG.scoreBoomBonusMax * clamp01(state.timeLeft / CONFIG.duration))
+        : 0;
+    return {
+      base: CONFIG.scoreBase,
+      protectionFactor: clamp01(
+        (everInfectedRatio - CONFIG.scoreAdoptionFloor) / CONFIG.scoreAdoptionSpan,
+      ),
+      socialFactor: clamp01((avgSocial - CONFIG.scoreSocialFloor) / CONFIG.scoreSocialSpan),
+      peakFactor: 1 + CONFIG.scorePeakBonusWeight * clamp01(peakRatio / CONFIG.scorePeakBonusRef),
+      pointsBonus: Math.floor(state.points) + boomBonus,
+    };
+  }
+
+  const protectionRatio = state.healthySeconds / elapsed;
+  const peakRatio = state.peakInfected / pop;
   return {
     base: CONFIG.scoreBase,
     protectionFactor: clamp01(
@@ -990,16 +1096,20 @@ export function scoreOf(state: SimState): number {
   return Math.max(0, Math.round((core + b.pointsBonus) * progressed));
 }
 
-export function buildResult(state: SimState): GameResult {
-  const elapsed = Math.max(1, state.time);
-  const protectionRatio = state.healthySeconds / elapsed;
-  const avgSocial = state.socialSeconds / elapsed;
-  const breakdown = breakdownOf(state);
-  const score = scoreOf(state);
+interface Verdict {
+  rank: GameResult['rank'];
+  verdict: string;
+  comment: string;
+}
 
-  const def = modeOf(state.mode);
-  const outcome: GameResult['outcome'] = state.outcome === 'playing' ? 'timeup' : state.outcome;
-
+/** 感染症・噂話・悪感情の結果評価。既存の式のまま（挙動を変えない） */
+function epidemicVerdict(
+  state: SimState,
+  def: ModeDef,
+  outcome: GameResult['outcome'],
+  protectionRatio: number,
+  avgSocial: number,
+): Verdict {
   // 抑えた度合いと社会活動の両立で評価する
   const balance = protectionRatio * 0.65 + avgSocial * 0.35;
   let rank: GameResult['rank'] = 'D';
@@ -1034,6 +1144,70 @@ export function buildResult(state: SimState): GameResult {
     const pct = Math.round((def.collapseRatio ?? 0.8) * 100);
     comment = `同時${def.spreadNoun}率が ${pct}% を超え、${Math.round(state.time)} 秒で打ち切られました。手が回らなくなる前に、早い段階で頭を押さえてください。`;
   }
+
+  return { rank, verdict, comment };
+}
+
+/** 新商品モードの結果評価。抑えた度合いの代わりに、一度でも試した割合（普及）で見る */
+function productVerdict(state: SimState, def: ModeDef, outcome: GameResult['outcome'], avgSocial: number): Verdict {
+  const pop = Math.max(1, state.agents.length);
+  const everInfectedRatio = state.agents.filter((a) => a.everInfected).length / pop;
+
+  // 広まった度合いと好感度の両立で評価する
+  const balance = everInfectedRatio * 0.65 + avgSocial * 0.35;
+  let rank: GameResult['rank'] = 'D';
+  let verdict = '不発';
+  let comment = `${def.spreadNoun}が街に届きませんでした。人が集まる場所で口コミが生まれるよう、動き直してみてください。`;
+  if (balance >= 0.85) {
+    rank = 'S';
+    verdict = '大ヒット';
+    comment = `${def.personNoun}が街を埋め尽くしました。文句のつけようがありません。`;
+  } else if (balance >= 0.75) {
+    rank = 'A';
+    verdict = '好調';
+    comment = 'よく広まりました。もう少し好感度を保てるとさらに伸びます。';
+  } else if (balance >= 0.62) {
+    rank = 'B';
+    verdict = '及第点';
+    comment = '広まりつつあります。人が固まる場所を見直すと伸びます。';
+  } else if (balance >= 0.45) {
+    rank = 'C';
+    verdict = '苦戦';
+    comment = '広まる勢いが足りていません。口コミが起きやすい場所を探しましょう。';
+  }
+
+  if (avgSocial < 0.45) {
+    comment = `${comment} 押しつけすぎです。${def.socialLabel}が下がると広まりにくくなります。`;
+  }
+
+  // ブーム到来・定着せずは無条件でその評価にする
+  if (outcome === 'boom') {
+    rank = 'S';
+    verdict = 'ブーム到来';
+    comment = `${Math.round(state.time)} 秒でブームが来ました。街中が${def.personNoun}で埋まっています。`;
+  } else if (outcome === 'fizzle') {
+    rank = 'D';
+    verdict = '定着せず';
+    comment = '広まる前に途絶えました。人が集まる場所で、何人にも勧められるようにしてください。';
+  }
+
+  return { rank, verdict, comment };
+}
+
+export function buildResult(state: SimState): GameResult {
+  const elapsed = Math.max(1, state.time);
+  const protectionRatio = state.healthySeconds / elapsed;
+  const avgSocial = state.socialSeconds / elapsed;
+  const breakdown = breakdownOf(state);
+  const score = scoreOf(state);
+
+  const def = modeOf(state.mode);
+  const outcome: GameResult['outcome'] = state.outcome === 'playing' ? 'timeup' : state.outcome;
+
+  const { rank, verdict, comment } =
+    state.mode === 'product'
+      ? productVerdict(state, def, outcome, avgSocial)
+      : epidemicVerdict(state, def, outcome, protectionRatio, avgSocial);
 
   return {
     mode: state.mode,

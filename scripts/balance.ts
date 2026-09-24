@@ -307,7 +307,12 @@ const DEFAULT_FREQ = 0.5;
 // 行動の頻度を比較する3水準（秒に1回）
 const FREQUENCIES = [0.5, 1, 2];
 const MODES: ModeId[] = ['epidemic', 'rumor', 'anger'];
-const MODE_LABEL: Record<ModeId, string> = { epidemic: '感染症', rumor: '噂話', anger: '悪感情' };
+const MODE_LABEL: Record<ModeId, string> = {
+  epidemic: '感染症',
+  rumor: '噂話',
+  anger: '悪感情',
+  product: '新商品',
+};
 
 const baselineScores = new Map<ModeId, number>();
 

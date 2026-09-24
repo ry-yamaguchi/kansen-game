@@ -92,6 +92,23 @@ export interface Agent {
   // --- 人の個性（2026-09-24 特性の追加で追加） ---
   /** 生まれつきの特性。最初の人数のうち数人だけに付き、流入で増えた人には付かない（研究メモ A1/B1/C3） */
   trait: Trait;
+
+  // --- 新商品モード専用（2026-09-24 エクストラステージ区切りE1で追加） ---
+  /**
+   * 何人に勧められたら試すか（1〜4人）。作るときに普及の5分類の重みで引く（研究メモE1/E2）。
+   * 新商品モード以外では使わない（常に0）。
+   */
+  adoptThreshold: number;
+  /**
+   * 勧められた（愛用中の人と合計recommendTime以上そばにいた）と数えた相手のid。
+   * 同じ人を重複して数えないための記録。愛用中・飽きた間は空にする（新商品モード以外では常に空）。
+   */
+  recommendedBy: number[];
+  /**
+   * 勧められている途中の相手ごとの、接触半径内にいた時間の合計（秒）。recommendTimeに達したら
+   * recommendedBy へ移す（新商品モード以外では常に空）。
+   */
+  recommendProgress: { id: number; seconds: number }[];
 }
 
 export type BlockRole = 'house' | 'plaza' | 'station' | 'school' | 'work';
@@ -171,10 +188,13 @@ export type Phase = 'ready' | 'countdown' | 'playing' | 'finished';
  * 決着の付き方。
  * - timeup: 制限時間まで持ちこたえた
  * - collapsed: 同時感染率が限界を超えて打ち切られた
+ * - boom:（新商品モード）同時の愛用率がブームの基準を超えた。勝ち
+ * - fizzle:（新商品モード）愛用中が0人になった。定着せず、負け
  *
- * 伝播が0になっても終わらない。終わりはこの2つだけである。
+ * 感染症・噂話・悪感情は伝播が0になっても終わらない（timeup と collapsed の2つだけ）。
+ * 新商品モードは逆に、愛用中が0人になると終わる（fizzle）。
  */
-export type Outcome = 'playing' | 'timeup' | 'collapsed';
+export type Outcome = 'playing' | 'timeup' | 'collapsed' | 'boom' | 'fizzle';
 
 /** 画面に出す短い通知（ウェーブの発生など） */
 export interface Notice {
@@ -186,7 +206,7 @@ export interface Notice {
 
 export type ToolId = 'isolation' | 'vaccine' | 'lockdown';
 
-export type ModeId = 'epidemic' | 'rumor' | 'anger';
+export type ModeId = 'epidemic' | 'rumor' | 'anger' | 'product';
 
 /**
  * モードごとに差し替える数値。

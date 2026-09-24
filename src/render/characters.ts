@@ -136,6 +136,8 @@ const SHAPES: Record<ModeId, Spread> = {
   rumor: { points: 9, spike: 1.5, bias: 0.28, inner: 0.5 },
   // 速くまっすぐ突き進む。前方だけが長い矢じりにする
   anger: { points: 5, spike: 1.15, bias: 0.75, inner: 0.52 },
+  // 新商品はまだ開始画面から選べない（区切りE3で見た目を作る）。ModeId を満たすための仮値
+  product: { points: 7, spike: 1.34, bias: 0.5, inner: 0.56 },
 };
 
 /** 殻の弧。0が前方。後ろを開けておくと進行方向が分かる */

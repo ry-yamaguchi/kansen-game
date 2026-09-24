@@ -59,6 +59,11 @@ export interface ModeDef {
    * 未指定のモードは打ち切らず、制限時間まで続く。
    */
   collapseRatio?: number;
+  /**
+   * （新商品モード）同時にこの割合まで広まったらブーム到来として打ち切り、勝ちにする。
+   * 未指定のモードはブーム判定をしない。
+   */
+  boomRatio?: number;
   tuning: Tuning;
   waves: WaveEvent[];
   /** 開始画面で色の意味を説明する文 */
@@ -333,12 +338,85 @@ const ANGER: ModeDef = {
   intro: '赤が怒っている人です。速く動き、まっすぐ人に向かいます。',
 };
 
+/**
+ * エクストラステージ「新商品」（広める側を遊ぶ。感染症の真逆）。docs/design-extra-stage.md 参照。
+ *
+ * 区切りE1では、モードの定義・複合的な伝染（複数の人に勧められて初めて試す）・勝ち負けと得点の
+ * 裏返しまでを作る。道具の効果の裏返し（E2）と画面（E3）はまだ無い。
+ * 開始画面からはまだ選べない（MODE_LIST に含めない）。
+ */
+const PRODUCT: ModeDef = {
+  id: 'product',
+  label: '新商品',
+  tagline: '広める側を遊びます。真逆のモードです',
+  spreadNoun: '普及',
+  personNoun: '愛用者',
+  variantLabel: '新展開',
+  powerLabel: '広まりやすさ',
+  states: { susceptible: '未体験', infected: '愛用中', recovered: '飽きた' },
+  colors: { susceptible: '#94a3b8', infected: '#facc15', recovered: '#a78bfa' },
+  socialLabel: '好感度',
+  // 用語は仮置き。効果の裏返しはE2で作るため、この区切りでは3モード共通の効果のままである
+  tools: {
+    isolation: {
+      label: 'イベント',
+      short: 'イベント',
+      hint: '出入りを止めます。中の人どうしは勧め合います',
+    },
+    vaccine: {
+      label: '試供品',
+      short: '試供品',
+      hint: '範囲の人に配ります。愛用中の人は早く飽きます',
+    },
+    lockdown: {
+      label: '広告',
+      short: '広告',
+      hint: '全員の動きを8秒間抑えます',
+    },
+  },
+  traits: {
+    social: { label: '顔の広い人', hint: '勧める相手が多くなります' },
+    popular: { label: 'インフルエンサー', hint: 'その人に勧められると2人分と数えます' },
+    medic: { label: '辛口レビュアー', hint: '近くの愛用が早く飽きます' },
+  },
+  // 崩壊ラインは持たない（打ち切りの負けは fizzle。愛用中が0人になったとき）
+  // 同時に6割が愛用したらブーム到来として打ち切り、勝ちにする
+  boomRatio: 0.6,
+  tuning: {
+    contactRadius: 30,
+    // 新商品モードは複合的な伝染（accumulateRecommend）に切り替えるため、感染症側の exposure 系の値は
+    // 使わない。Tuning の型を満たすためだけに epidemic と同じ値を置いている
+    exposureGain: 1.8,
+    // 愛用中でいる時間（＝飽きるまでの秒数）
+    spreadMin: 10,
+    spreadMax: 14.5,
+    // 飽きてから未体験に戻るまでの秒数
+    resistanceDuration: 7,
+    speedMin: 74,
+    speedMax: 126,
+    turnRate: 2.2,
+    activeSpeedMul: 1,
+    activeTurnMul: 1,
+    // 新商品モードでは未使用（複合的な伝染は時間の合計だけで数え、重みを付けない）
+    stayContact: 1.0,
+    moveContact: 0.35,
+    // 新商品モードでは未使用（道具の効果はE2で作る）
+    immunityMul: 1,
+    treatMul: 1,
+  },
+  // ウェーブはこの区切りでは作らない
+  waves: [],
+  intro: '明るく光った人が愛用中です。何人にも勧められると試したくなります。',
+};
+
 export const MODES: Record<ModeId, ModeDef> = {
   epidemic: EPIDEMIC,
   rumor: RUMOR,
   anger: ANGER,
+  product: PRODUCT,
 };
 
+// product はまだ開始画面から選べない（区切りE3で追加する）。ここに足すと選択肢に出てしまう
 export const MODE_LIST: ModeDef[] = [EPIDEMIC, RUMOR, ANGER];
 
 export function modeOf(id: ModeId): ModeDef {

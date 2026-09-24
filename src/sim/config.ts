@@ -182,6 +182,25 @@ export const CONFIG = {
   /** 人口のこの割合まで感染が広がったら、補正が最大に効く */
   scorePeakRef: 0.7,
 
+  // --- 新商品（エクストラステージ。2026-09-24 区切りE1で追加。研究メモE1/E2） ---
+  /** 愛用中の人と接触半径内に合計これだけの秒数いたら「勧められた」と数える */
+  recommendTime: 1.5,
+  /**
+   * 「何人に勧められたら試すか」（1〜4人）の割合。研究メモE2の普及の5分類（新しもの好き〜慎重派）に沿う。
+   * 添字0が1人・添字3が4人で、合計は1になる。
+   */
+  adoptThresholdWeights: [0.1, 0.4, 0.35, 0.15] as readonly number[],
+  /** 普及係数（新商品のscoreProtectionFloor相当）。一度でも試した割合がこの値までは0点 */
+  scoreAdoptionFloor: 0.3,
+  /** 床から満点までの幅（新商品） */
+  scoreAdoptionSpan: 0.5,
+  /** 同時愛用率による補正の強さ（新商品。scorePeakWeightの裏返し。最大でこの割合だけ上乗せする） */
+  scorePeakBonusWeight: 0.3,
+  /** 人口のこの割合まで同時愛用が増えたら、補正が最大に効く（新商品） */
+  scorePeakBonusRef: 0.6,
+  /** boomで終えたとき、残り時間の割合に応じて足す最大ボーナス点（新商品。早くブームにするほど高い） */
+  scoreBoomBonusMax: 100,
+
   // --- コスト ---
   costs: {
     isolation: 28,
