@@ -74,8 +74,14 @@ export function StartScreen({ mode, onSelectMode, onStart }: Props) {
           <span style={{ color: def.colors.susceptible }}>{def.states.susceptible}</span> ／{' '}
           <span style={{ color: def.colors.infected }}>{def.states.infected}</span> ／{' '}
           <span style={{ color: def.colors.recovered }}>{def.states.recovered}</span> の3状態です。
-          {def.states.recovered}になっても、しばらくすると
-          {def.states.susceptible}に戻ります。
+          {def.spreadSide ? (
+            def.spreadSide.returnSentence
+          ) : (
+            <>
+              {def.states.recovered}になっても、しばらくすると
+              {def.states.susceptible}に戻ります。
+            </>
+          )}
         </p>
 
         <ul className="traits" aria-label="特性を持つ人の見分け方">
@@ -105,9 +111,9 @@ export function StartScreen({ mode, onSelectMode, onStart }: Props) {
         </p>
 
         <ol className="howto">
-          <li>下のボタンで対策を選びます</li>
+          <li>下のボタンで{def.spreadSide ? def.spreadSide.actionNoun : '対策'}を選びます</li>
           <li>画面を押したまま動かすと、効果の範囲が見えます</li>
-          <li>指を離すと、そこに対策を打ちます</li>
+          <li>指を離すと、そこに{def.spreadSide ? def.spreadSide.actionNoun : '対策'}を打ちます</li>
         </ol>
 
         <p className="panel__note">

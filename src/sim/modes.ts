@@ -76,6 +76,10 @@ export interface ModeDef {
    */
   spreadSide?: {
     startNote: string;
+    /** 3状態の説明の後半（「飽きた人も、しばらくすると…」） */
+    returnSentence: string;
+    /** 遊び方の説明で「対策」の代わりに使う言葉 */
+    actionNoun: string;
     reachLabel: string;
     peakLabel: string;
     finalLabel: string;
@@ -435,6 +439,8 @@ const PRODUCT: ModeDef = {
   intro: '明るく光った人が愛用中です。何人にも勧められると試したくなります。',
   countdownHint: '光っている点が愛用中の人です。位置を確認してください',
   spreadSide: {
+    returnSentence: '飽きた人も、しばらくすると未体験に戻ります。',
+    actionNoun: '手',
     startNote:
       '押しつけるほど好感度が下がり、対策ポイントの回復も鈍ります。スコアは「広めること」と「好感度を保つこと」の掛け算です。広告に頼りすぎても点になりません。',
     reachLabel: '普及率（一度でも試した人）',
