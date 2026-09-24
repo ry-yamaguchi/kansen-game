@@ -49,7 +49,7 @@ export const CONFIG = {
   // --- 対策ポイント ---
   startPoints: 110,
   /** 1秒あたりの自然回復量 */
-  pointRegen: 1.9,
+  pointRegen: 2.5,
   // 上限は開始時と同じにする。使わずに貯めたポイントは溢れて消えるので、待つことにも代償がある
   maxPoints: 110,
 
@@ -185,7 +185,7 @@ export const CONFIG = {
   // --- コスト ---
   costs: {
     isolation: 28,
-    vaccine: 30,
+    vaccine: 26,
     lockdown: 30,
   } satisfies Record<ToolId, number>,
 } as const;

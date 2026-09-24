@@ -9,6 +9,10 @@ import { CONFIG, planWorld } from '../src/sim/config';
 import { buildResult, createSim, placeIsolation, placeVaccine, step, triggerLockdown } from '../src/sim/engine';
 import type { ModeId, SimState, ToolId } from '../src/sim/types';
 
+// このスクリプトは --ignoreConfig で単体コンパイルしており、tsconfig 経由の Node 型を持たない。
+// BALANCE_TRIALS 環境変数を読むためだけの最小限の宣言
+declare const process: { env: Record<string, string | undefined> };
+
 const DT = 1 / 60;
 
 type Strategy =
@@ -295,7 +299,9 @@ function report(
   return score;
 }
 
-const TRIALS = 20;
+// 既定は20試合。環境変数 BALANCE_TRIALS で上書きできる（例: 崩壊率の最終確認は100試合で取る）
+const envTrials = Number(process.env.BALANCE_TRIALS);
+const TRIALS = Number.isFinite(envTrials) && envTrials > 0 ? Math.floor(envTrials) : 20;
 // 頻度の基準値。旧実装（30ステップに1回=0.5秒に1回）と揃え、過去の計測と比較できるようにする
 const DEFAULT_FREQ = 0.5;
 // 行動の頻度を比較する3水準（秒に1回）

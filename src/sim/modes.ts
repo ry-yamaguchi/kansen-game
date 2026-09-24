@@ -98,8 +98,8 @@ const EPIDEMIC: ModeDef = {
     popular: { label: '人気者', hint: '周りに人が集まります' },
     medic: { label: '医療スタッフ', hint: '近くの感染が早く収まります' },
   },
-  // 同時に7割5分が感染したら医療が崩壊したものとして打ち切る
-  collapseRatio: 0.75,
+  // 同時に6割5分が感染したら医療が崩壊したものとして打ち切る（段階3のバランス取り直しで7割5分から変更）
+  collapseRatio: 0.65,
   tuning: {
     contactRadius: 30,
     exposureGain: 1.8,
@@ -186,12 +186,12 @@ const RUMOR: ModeDef = {
     popular: { label: '顔の広い人', hint: '周りに人が集まります' },
     medic: { label: '記者', hint: '近くの噂が早く収まります' },
   },
-  // 同時に7割5分が噂をしていたら、収拾不能として打ち切る
-  collapseRatio: 0.75,
+  // 同時に6割3分が噂をしていたら、収拾不能として打ち切る（段階3のバランス取り直しで7割5分から変更）
+  collapseRatio: 0.63,
   tuning: {
     // 噂は離れていても伝わる。そのぶん1回の接触は弱い
     contactRadius: 44,
-    exposureGain: 1.15,
+    exposureGain: 1.45,
     // 飽きるより前に、聞いた人がまた話す時間を確保する
     // （放置すると鎮火が早すぎたため、やや伸ばした）
     spreadMin: 8.5,
@@ -278,11 +278,11 @@ const ANGER: ModeDef = {
     popular: { label: '目立つ人', hint: '周りに人が集まります' },
     medic: { label: '仲裁役', hint: '近くの怒りが早く収まります' },
   },
-  // 同時に7割5分が怒っていたら、暴動として打ち切る
-  collapseRatio: 0.75,
+  // 同時に6割6分が怒っていたら、暴動として打ち切る（段階3のバランス取り直しで7割5分から変更）
+  collapseRatio: 0.66,
   tuning: {
     contactRadius: 27,
-    exposureGain: 2.2,
+    exposureGain: 4.5,
     spreadMin: 7.5,
     spreadMax: 11,
     // すぐ再燃する。冷めても安心できない
