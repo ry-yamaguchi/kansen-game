@@ -57,6 +57,27 @@ export function StartScreen({ mode, onSelectMode, onStart }: Props) {
           {def.states.susceptible}に戻ります。
         </p>
 
+        <ul className="traits" aria-label="特性を持つ人の見分け方">
+          <li>
+            <span className="traits__icon" aria-hidden="true">
+              ◌
+            </span>
+            {def.traits.social.label} — {def.traits.social.hint}
+          </li>
+          <li>
+            <span className="traits__icon" aria-hidden="true">
+              ★
+            </span>
+            {def.traits.popular.label} — {def.traits.popular.hint}
+          </li>
+          <li>
+            <span className="traits__icon" aria-hidden="true">
+              ✚
+            </span>
+            {def.traits.medic.label} — {def.traits.medic.hint}
+          </li>
+        </ul>
+
         <p className="panel__note">
           街には住宅・学校・職場・広場・駅があります。朝は学校や職場へ、昼は広場へ、
           夕方は家へと、時間帯によって人が街を行き来します。

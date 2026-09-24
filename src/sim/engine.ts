@@ -14,6 +14,7 @@ import type {
   Period,
   Purpose,
   SimState,
+  TraitId,
   Tuning,
   World,
 } from './types';
@@ -78,7 +79,31 @@ function makeAgent(
     sickStaysHome: rng.next() < CONFIG.sickStayHomeRate,
     avoidThreshold: rand(rng, 0.15, 0.6),
     compliesLockdown: true,
+
+    trait: null,
   };
+}
+
+/** 特性を配る順序。CONFIG.traitCounts の各人数ぶんだけ、この順に選ぶ（表の並びと合わせる） */
+const TRAIT_ORDER: readonly TraitId[] = ['social', 'popular', 'medic'];
+
+/**
+ * 最初の人数のうちから、特性を持つ人をちょうど CONFIG.traitCounts ぶんだけ選ぶ。決定論を保つため rng だけを使う。
+ * 必要な合計人数に満たない盤面（小さなテストなど）では、誰にも付けない。
+ * 中途半端に一部だけ配ると、少人数の盤面の前提（特性なし）を崩してしまうため。
+ */
+function assignTraits(agents: Agent[], rng: Rng): void {
+  const total = TRAIT_ORDER.reduce((sum, id) => sum + CONFIG.traitCounts[id], 0);
+  if (agents.length < total) return;
+  const pool = agents.map((_, i) => i);
+  for (const id of TRAIT_ORDER) {
+    for (let k = 0; k < CONFIG.traitCounts[id]; k += 1) {
+      const pick = rng.int(pool.length);
+      const idx = pool[pick];
+      pool.splice(pick, 1);
+      agents[idx].trait = id;
+    }
+  }
 }
 
 /** 家の前で留まる範囲（通りの中の小さな四角） */
@@ -414,6 +439,10 @@ export function createSim(
   }
   for (const i of startIndexes) infect(agents[i], state);
   state.totalInfected = startIndexes.size;
+
+  // 特性は流入で増えた人には付けないため、最初の人数だけを対象に、初期感染者を選び終えたあとに配る
+  assignTraits(agents, rng);
+
   recount(state);
   return state;
 }
@@ -473,8 +502,43 @@ function followPath(a: Agent, speed: number, dt: number): void {
   }
 }
 
+/** 2人が同じ場所（同じ区画の留まる範囲）にいるか。留まる範囲は区画ごとに同じ値になる */
+function sameStay(a: Agent, b: Agent): boolean {
+  return a.stay.x === b.stay.x && a.stay.y === b.stay.y && a.stay.w === b.stay.w && a.stay.h === b.stay.h;
+}
+
+/** -PI..PI に収めた、from から to への向きの差（近い側を回る） */
+function angleDiff(from: number, to: number): number {
+  let d = (to - from) % TAU;
+  if (d > Math.PI) d -= TAU;
+  if (d < -Math.PI) d += TAU;
+  return d;
+}
+
+/**
+ * popular: 同じ場所に留まっている人の向きを、近くにいる人気者へ少しずつ寄せる（人が集まってくる。研究メモC3）。
+ * 乱数は使わない（向きの差に比例した一定の割合で曲げるだけ）ため、決定論は崩れない。
+ */
+function pullTowardPopular(a: Agent, popularAgents: readonly Agent[], dt: number): void {
+  for (const p of popularAgents) {
+    if (p === a || !sameStay(a, p)) continue;
+    const dx = p.x - a.x;
+    const dy = p.y - a.y;
+    if (Math.hypot(dx, dy) < CONFIG.traitPopularMinDist) continue; // 近づきすぎたら曲げない
+    a.dir += angleDiff(a.dir, Math.atan2(dy, dx)) * CONFIG.traitPopularPull * dt;
+    return;
+  }
+}
+
 /** 目的地（または家の前）に着いた人を、その場で小さく歩き回らせる */
-function wanderInPlace(state: SimState, a: Agent, speed: number, dt: number, active: boolean): void {
+function wanderInPlace(
+  state: SimState,
+  a: Agent,
+  speed: number,
+  dt: number,
+  active: boolean,
+  popularAgents: readonly Agent[],
+): void {
   if (a.zone >= 0) {
     const z = state.zones.find((q) => q.id === a.zone);
     if (z) {
@@ -489,6 +553,7 @@ function wanderInPlace(state: SimState, a: Agent, speed: number, dt: number, act
   const t = state.tuning;
   const turn = t.turnRate * (active ? t.activeTurnMul : 1);
   a.dir += rand(state.rng, -turn, turn) * dt;
+  pullTowardPopular(a, popularAgents, dt);
   const v = speed * WANDER_SPEED_MUL;
   a.x += Math.cos(a.dir) * v * dt;
   a.y += Math.sin(a.dir) * v * dt;
@@ -537,6 +602,11 @@ function recount(state: SimState): void {
  */
 function moveAgents(state: SimState, dt: number): void {
   const t = state.tuning;
+  // popular: 広場・職場・学校・駅に留まっている人だけが引き寄せの的になる（家では起きない）。
+  // 1フレームに1回だけ集計し、歩いている最中の全員から毎回探させない
+  const popularAgents = state.agents.filter(
+    (p) => p.trait === 'popular' && p.arrived && p.zone < 0 && p.purpose !== 'home',
+  );
   for (const a of state.agents) {
     // 閉じ込められている間は予定を進めない（封鎖が消えたら予定に戻す）
     if (a.zone < 0) updateAgentPurpose(state, a);
@@ -553,7 +623,7 @@ function moveAgents(state: SimState, dt: number): void {
     if (a.zone < 0 && !a.arrived && a.path.length > 0) {
       followPath(a, v, dt);
     } else {
-      wanderInPlace(state, a, v, dt, active);
+      wanderInPlace(state, a, v, dt, active, popularAgents);
     }
 
     // 経路のずらしや境界の丸めで、まれに建物の中に入り込むことがある。念のため押し戻す
@@ -649,6 +719,9 @@ export function step(state: SimState, dt: number): void {
   state.links.length = 0;
   const cr = state.tuning.contactRadius;
   const cr2 = cr * cr;
+  // social: 接触と判定する距離が広い（研究メモB1）。半径だけ別に用意し、平方は先に計算しておく
+  const socialR = cr * CONFIG.traitSocialRadiusMul;
+  const socialR2 = socialR * socialR;
   const stayW = state.tuning.stayContact;
   const moveW = state.tuning.moveContact;
   const agents = state.agents;
@@ -656,18 +729,22 @@ export function step(state: SimState, dt: number): void {
   for (let i = 0; i < n; i += 1) {
     const a = agents[i];
     if (a.state !== 'infected') continue;
+    // social: よく人と会う人は届く範囲が広く、1接触あたりの感染圧も重い（B1: 感染の2割が8割を広げる）
+    const social = a.trait === 'social';
+    const reach2 = social ? socialR2 : cr2;
     for (let j = 0; j < n; j += 1) {
       const b = agents[j];
       if (b.state !== 'susceptible') continue;
       const dx = a.x - b.x;
       const dy = a.y - b.y;
       const d2 = dx * dx + dy * dy;
-      if (d2 > cr2) continue;
+      if (d2 > reach2) continue;
       // 封鎖の境界をまたいだ接触は起きない。中の人どうし・外の人どうしは普通に接触する
       if (a.zone !== b.zone) continue;
       b.contacts += 1;
       // 留まっている者どうしは重く、どちらかが移動中なら軽い。モードで変わる（B2/D1）
-      b.load += a.arrived && b.arrived ? stayW : moveW;
+      const w = a.arrived && b.arrived ? stayW : moveW;
+      b.load += social ? w * CONFIG.traitSocialLoadMul : w;
       if (state.links.length < 240) state.links.push(i, j);
     }
   }
@@ -704,9 +781,19 @@ export function step(state: SimState, dt: number): void {
   }
 
   // --- 回復と、耐性切れ（SIRS）---
+  // medic: 半径内の感染者は回復が早まる。本人の状態は問わない（medic自身が感染していても対象に含む）
+  const medics = agents.filter((m) => m.trait === 'medic');
+  const medicR2 = CONFIG.traitMedicRadius * CONFIG.traitMedicRadius;
+  const nearMedic = (a: Agent): boolean =>
+    medics.some((m) => {
+      const dx = m.x - a.x;
+      const dy = m.y - a.y;
+      return dx * dx + dy * dy <= medicR2;
+    });
   for (const a of agents) {
     if (a.state === 'infected') {
-      a.infectionTimer -= dt;
+      const recoverMul = medics.length > 0 && nearMedic(a) ? CONFIG.traitMedicRecoverMul : 1;
+      a.infectionTimer -= dt * recoverMul;
       if (a.infectionTimer <= 0) {
         a.state = 'recovered';
         a.flash = 1;

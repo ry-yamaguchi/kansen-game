@@ -1,4 +1,4 @@
-import type { ModeId, Tuning, ToolId } from './types';
+import type { ModeId, Tuning, ToolId, TraitId } from './types';
 
 /**
  * ウェーブ（時間経過で状況を悪化させる出来事）。
@@ -52,6 +52,8 @@ export interface ModeDef {
   socialLabel: string;
   /** 対策の呼び名。効果そのものは3モード共通 */
   tools: Record<ToolId, { label: string; short: string; hint: string }>;
+  /** 特性持ちの呼び名と一言の説明（開始画面の凡例に使う）。効果そのものは3モード共通 */
+  traits: Record<TraitId, { label: string; hint: string }>;
   /**
    * 同時にこの割合まで広がったら打ち切って負けにする。
    * 未指定のモードは打ち切らず、制限時間まで続く。
@@ -90,6 +92,11 @@ const EPIDEMIC: ModeDef = {
       short: '停止',
       hint: '全員の移動と接触を8秒間抑えます',
     },
+  },
+  traits: {
+    social: { label: 'よく人と会う人', hint: '感染が広がりやすくなります' },
+    popular: { label: '人気者', hint: '周りに人が集まります' },
+    medic: { label: '医療スタッフ', hint: '近くの感染が早く収まります' },
   },
   // 同時に7割5分が感染したら医療が崩壊したものとして打ち切る
   collapseRatio: 0.75,
@@ -173,6 +180,11 @@ const RUMOR: ModeDef = {
       short: '告知',
       hint: '街全体の話題を8秒間そらします',
     },
+  },
+  traits: {
+    social: { label: '話し好き', hint: '噂が広がりやすくなります' },
+    popular: { label: '顔の広い人', hint: '周りに人が集まります' },
+    medic: { label: '記者', hint: '近くの噂が早く収まります' },
   },
   // 同時に7割5分が噂をしていたら、収拾不能として打ち切る
   collapseRatio: 0.75,
@@ -260,6 +272,11 @@ const ANGER: ModeDef = {
       short: '深呼吸',
       hint: '街全体の動きを8秒間止めます',
     },
+  },
+  traits: {
+    social: { label: '火種になりやすい人', hint: '怒りが広がりやすくなります' },
+    popular: { label: '目立つ人', hint: '周りに人が集まります' },
+    medic: { label: '仲裁役', hint: '近くの怒りが早く収まります' },
   },
   // 同時に7割5分が怒っていたら、暴動として打ち切る
   collapseRatio: 0.75,

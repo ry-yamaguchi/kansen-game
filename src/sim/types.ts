@@ -4,6 +4,11 @@ import type { Rng } from './rng';
 
 export type AgentState = 'susceptible' | 'infected' | 'recovered';
 
+/** 生まれつきの特性の種類 */
+export type TraitId = 'social' | 'popular' | 'medic';
+/** 生まれつきの特性。null は特性なし */
+export type Trait = TraitId | null;
+
 /** 一日の時間帯。朝は通う先、昼は広場（一部は駅）、夕方は家へ向かう */
 export type Period = 'morning' | 'noon' | 'evening';
 
@@ -83,6 +88,10 @@ export interface Agent {
   avoidThreshold: number;
   /** 直近のロックダウンに従っているか。従わない人には速度・感染圧の低下が掛からない（B5） */
   compliesLockdown: boolean;
+
+  // --- 人の個性（2026-09-24 特性の追加で追加） ---
+  /** 生まれつきの特性。最初の人数のうち数人だけに付き、流入で増えた人には付かない（研究メモ A1/B1/C3） */
+  trait: Trait;
 }
 
 export type BlockRole = 'house' | 'plaza' | 'station' | 'school' | 'work';

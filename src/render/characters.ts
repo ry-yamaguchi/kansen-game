@@ -285,6 +285,51 @@ function paintRow(
   }
 }
 
+// --- 特性の印 -----------------------------------------------------------------
+
+/**
+ * 特性持ちを重ねて示す小さな印。状態のシルエット（丸／星／殻）はそのまま残し、
+ * 白に近い色で細く重ねる。人数はごく少数（既定4人）なので、毎フレーム直接パスを描いてよい。
+ */
+
+/** popular の頭上に置く小さな星 */
+function drawTraitStar(g: CanvasRenderingContext2D, cx: number, cy: number, size: number): void {
+  const spikes = 5;
+  const inner = size * 0.42;
+  g.beginPath();
+  for (let k = 0; k < spikes * 2; k += 1) {
+    const rad = k % 2 === 0 ? size : inner;
+    const ang = (k / (spikes * 2)) * TAU - Math.PI / 2;
+    const x = cx + Math.cos(ang) * rad;
+    const y = cy + Math.sin(ang) * rad;
+    if (k === 0) g.moveTo(x, y);
+    else g.lineTo(x, y);
+  }
+  g.closePath();
+  g.fillStyle = 'rgba(250,252,255,0.95)';
+  g.fill();
+  g.lineWidth = Math.max(0.6, size * 0.2);
+  g.strokeStyle = 'rgba(8,12,22,0.55)';
+  g.stroke();
+}
+
+/** medic の頭上に置く小さな十字 */
+function drawTraitCross(g: CanvasRenderingContext2D, cx: number, cy: number, size: number): void {
+  g.lineCap = 'round';
+  g.beginPath();
+  g.moveTo(cx, cy - size);
+  g.lineTo(cx, cy + size);
+  g.moveTo(cx - size, cy);
+  g.lineTo(cx + size, cy);
+  // 濃い縁を太く描いてから、白を細く重ねる（縁取り文字と同じ考え方）
+  g.lineWidth = Math.max(2, size * 0.62);
+  g.strokeStyle = 'rgba(8,12,22,0.5)';
+  g.stroke();
+  g.lineWidth = Math.max(1, size * 0.34);
+  g.strokeStyle = 'rgba(250,252,255,0.95)';
+  g.stroke();
+}
+
 // --- スプライトシート -------------------------------------------------------
 
 interface Sheet {
@@ -615,6 +660,27 @@ export function createCharacterRenderer(): CharacterRenderer {
           TAU,
         );
         ctx.stroke();
+      }
+
+      // 特性の印。状態のシルエットは変えず、いちばん上に重ねて常に見えるようにする
+      for (const a of agents) {
+        if (!a.trait) continue;
+        const cx = view.ox + a.x * view.scale;
+        const cy = view.oy + a.y * view.scale;
+        if (a.trait === 'social') {
+          // 外側の点線の輪（届く範囲が広いことを示す）
+          ctx.setLineDash([Math.max(1.4, r * 0.3), Math.max(1.4, r * 0.34)]);
+          ctx.lineWidth = Math.max(1, r * 0.22);
+          ctx.strokeStyle = 'rgba(248,250,252,0.8)';
+          ctx.beginPath();
+          ctx.arc(cx, cy, r + 6.2, 0, TAU);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        } else if (a.trait === 'popular') {
+          drawTraitStar(ctx, cx, cy - r - 5.5, Math.max(2.6, r * 0.62));
+        } else if (a.trait === 'medic') {
+          drawTraitCross(ctx, cx, cy - r - 5.5, Math.max(2.2, r * 0.56));
+        }
       }
     },
   };

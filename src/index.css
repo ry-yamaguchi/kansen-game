@@ -769,6 +769,26 @@ body {
   color: #c7d2e1;
 }
 
+/* ---------- 特性の凡例（小さく、3行に収める） ---------- */
+
+.traits {
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 3px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.traits__icon {
+  display: inline-block;
+  width: 1.4em;
+  text-align: center;
+  color: #e2e8f0;
+}
+
 .cta {
   width: 100%;
   padding: 13px;

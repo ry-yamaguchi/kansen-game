@@ -1,4 +1,4 @@
-import type { ToolId, World } from './types';
+import type { ToolId, TraitId, World } from './types';
 
 /**
  * ゲームバランスの調整値。
@@ -137,6 +137,30 @@ export const CONFIG = {
   // --- 隔離エリアの制限 ---
   /** 同時に置ける隔離エリアの数 */
   maxZones: 3,
+
+  // --- 人の個性（特性。2026-09-24 追加） ---
+  /**
+   * 最初の人数のうち、特性を持つ人数。social→popular→medicの順に選ぶ。
+   * 合計が人数に満たない盤面（小さなテストなど）では、誰にも付けない。
+   * 0にすれば、その特性を持つ人がいない盤面で遊べる（研究メモ A1: 注意すべき対象は4つ以内）。
+   */
+  traitCounts: {
+    social: 2,
+    popular: 1,
+    medic: 1,
+  } satisfies Record<TraitId, number>,
+  /** social: 感染中に、接触した相手にかかる感染圧の倍率（研究メモ B1: 感染の2割が8割を広げる） */
+  traitSocialLoadMul: 2.5,
+  /** social: 接触と判定する距離の倍率。よく人と会う分、届く範囲も広い */
+  traitSocialRadiusMul: 1.3,
+  /** popular: 同じ場所に留まっている人の向きを popular へ寄せる強さ（1秒あたり、向きの差に掛ける割合） */
+  traitPopularPull: 0.35,
+  /** popular: これより近づいたら、それ以上は寄せない（重なりすぎ防止） */
+  traitPopularMinDist: 18,
+  /** medic: 半径内にいる感染者の、感染残り時間が減る速さの倍率 */
+  traitMedicRecoverMul: 1.8,
+  /** medic: 効果が届く半径 */
+  traitMedicRadius: 80,
 
   // --- スコア ---
   /**
