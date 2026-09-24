@@ -538,6 +538,11 @@ export function createSim(
 
   // 特性は流入で増えた人には付けないため、最初の人数だけを対象に、初期感染者を選び終えたあとに配る
   assignTraits(agents, rng);
+  // 新商品: 周りに影響を与える人（インフルエンサー）は、もともと初期に採り入れる人である（研究メモ E2）。
+  // 試供品を渡せば試し、その勧めは2人分として効く
+  if (mode === 'product') {
+    for (const a of agents) if (a.trait === 'popular') a.adoptThreshold = 1;
+  }
 
   recount(state);
   return state;
@@ -832,6 +837,7 @@ export function step(state: SimState, dt: number): void {
   // 新商品モードだけ、感染の仕組みを複合的な伝染（複数の人に勧められて初めて試す）に切り替える。
   // 他の3モードの接触判定・感染の進行はいっさい変えない（研究メモE1）
   const isProduct = state.mode === 'product';
+  const eventZones = isProduct ? state.zones.filter((z) => z.kind === 'event') : [];
   let newInfections = 0;
   for (let i = 0; i < n; i += 1) {
     const a = agents[i];
@@ -852,7 +858,11 @@ export function step(state: SimState, dt: number): void {
       b.contacts += 1;
       if (isProduct) {
         // 複合的な伝染: 感染圧ではなく、勧められた人数（相手ごとの合計接触時間）を積む
-        accumulateRecommend(b, a, dt);
+        // イベントの円の中では勧め合いが盛り上がる
+        const buzz = eventZones.some((z) => Math.hypot(b.x - z.x, b.y - z.y) <= z.r)
+          ? CONFIG.eventRecommendMul
+          : 1;
+        accumulateRecommend(b, a, dt * buzz);
       } else {
         // 留まっている者どうしは重く、どちらかが移動中なら軽い。モードで変わる（B2/D1）
         const w = a.arrived && b.arrived ? stayW : moveW;
@@ -1044,6 +1054,9 @@ export function placeIsolation(state: SimState, x: number, y: number): boolean {
  * 新商品モードでは「試供品」になる。範囲内の未体験の人はその場で試す（愛用中になる）。
  * 飽きた人・すでに愛用中の人には何もしない（道具/試供品）。
  */
+/** 試供品による「勧められた」の記録に使う、人ではない id。何度配っても1人分と数える */
+const SAMPLE_RECOMMENDER = -1;
+
 export function placeVaccine(state: SimState, x: number, y: number): boolean {
   if (!spend(state, CONFIG.costs.vaccine)) return false;
   const r = CONFIG.vaccineRadius;
@@ -1052,7 +1065,13 @@ export function placeVaccine(state: SimState, x: number, y: number): boolean {
     if (Math.hypot(a.x - x, a.y - y) > r) continue;
     if (a.state === 'susceptible') {
       if (isProduct) {
-        infect(a, state); // 試供品: その場で試させる。flash は infect() 側で立つ
+        // 試供品: 新しもの好き・初期採用者はその場で試す。慎重な人には「1人に勧められた」ぶんとして残る
+        if (a.adoptThreshold <= CONFIG.sampleAdoptMaxThreshold) {
+          infect(a, state); // flash は infect() 側で立つ
+        } else if (!a.recommendedBy.includes(SAMPLE_RECOMMENDER)) {
+          a.recommendedBy.push(SAMPLE_RECOMMENDER);
+          a.flash = Math.max(a.flash, 0.7);
+        }
       } else {
         a.immunity = CONFIG.immunityDuration;
         a.exposure = 0;
@@ -1178,7 +1197,10 @@ export function breakdownOf(state: SimState): GameResult['breakdown'] {
  */
 export function scoreOf(state: SimState): number {
   const b = breakdownOf(state);
-  const progressed = Math.min(1, state.time / CONFIG.duration);
+  // 途中で終わった試合は、もった時間の割合で減らす（崩壊・定着せずは罰）。
+  // ただし新商品のブーム到来は勝ちなので減らさない（早いほど上乗せがある）
+  const progressed =
+    state.mode === 'product' && state.outcome === 'boom' ? 1 : Math.min(1, state.time / CONFIG.duration);
   const core = b.base * b.protectionFactor * b.socialFactor * b.peakFactor;
   return Math.max(0, Math.round((core + b.pointsBonus) * progressed));
 }

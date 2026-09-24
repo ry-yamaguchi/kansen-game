@@ -7,6 +7,7 @@
  */
 import { CONFIG, planWorld } from '../src/sim/config';
 import { buildResult, createSim, placeIsolation, placeVaccine, step, triggerLockdown } from '../src/sim/engine';
+import { modeOf } from '../src/sim/modes';
 import type { ModeId, SimState, ToolId } from '../src/sim/types';
 
 // このスクリプトは --ignoreConfig で単体コンパイルしており、tsconfig 経由の Node 型を持たない。
@@ -329,39 +330,195 @@ function runModeReport(mode: ModeId): void {
   report('本気AI', TRIALS, 'smart', mode, DEFAULT_FREQ, baseline);
 }
 
-console.log('感染るラボ バランス計測（シード固定・再現可能）。放置比はスコアの倍率である。');
-for (const mode of MODES) runModeReport(mode);
+// BALANCE_ONLY=product のときは、新商品の節だけを回す（100試合の確認を速くするため）。既定は全部回す
+const ONLY = process.env.BALANCE_ONLY;
+if (ONLY !== 'product') {
+  console.log('感染るラボ バランス計測（シード固定・再現可能）。放置比はスコアの倍率である。');
+  for (const mode of MODES) runModeReport(mode);
 
-console.log('=== 行動の頻度を変えると強くなるか（0.5秒/1秒/2秒に1回） ===');
-for (const mode of MODES) {
-  const baseline = baselineScores.get(mode);
-  for (const freq of FREQUENCIES) {
-    report(`${MODE_LABEL[mode]}・簡易AI ${freq}秒`, TRIALS, 'greedy', mode, freq, baseline);
+  console.log('=== 行動の頻度を変えると強くなるか（0.5秒/1秒/2秒に1回） ===');
+  for (const mode of MODES) {
+    const baseline = baselineScores.get(mode);
+    for (const freq of FREQUENCIES) {
+      report(`${MODE_LABEL[mode]}・簡易AI ${freq}秒`, TRIALS, 'greedy', mode, freq, baseline);
+    }
+    for (const freq of FREQUENCIES) {
+      report(`${MODE_LABEL[mode]}・本気AI ${freq}秒`, TRIALS, 'smart', mode, freq, baseline);
+    }
   }
-  for (const freq of FREQUENCIES) {
-    report(`${MODE_LABEL[mode]}・本気AI ${freq}秒`, TRIALS, 'smart', mode, freq, baseline);
+
+  // 人間は0.5秒ごとに最善手を打てない。画面を見て、狙って、指を動かすまでに数秒かかる。
+  // ここが崩れていると、数字の上では勝てても人間には理不尽なゲームになる
+  const HUMAN_INTERVALS = [3, 5];
+  console.log('=== 人間に近い反応の遅さ（3秒/5秒に1回） ===');
+  for (const mode of MODES) {
+    const baseline = baselineScores.get(mode);
+    for (const freq of HUMAN_INTERVALS) {
+      report(`${MODE_LABEL[mode]}・本気AI ${freq}秒`, TRIALS, 'smart', mode, freq, baseline);
+    }
+    for (const freq of HUMAN_INTERVALS) {
+      report(`${MODE_LABEL[mode]}・簡易AI ${freq}秒`, TRIALS, 'greedy', mode, freq, baseline);
+    }
+  }
+
+  // スマートフォンは盤面が縦長。画面の形で別のゲームになっていないかを見張る
+  console.log('=== スマートフォン（縦長） ===');
+  for (const mode of MODES) {
+    const baseline = report(`${MODE_LABEL[mode]}・放置`, TRIALS, 'none', mode, DEFAULT_FREQ, undefined, PHONE);
+    report(`${MODE_LABEL[mode]}・本気AI 0.5秒`, TRIALS, 'smart', mode, DEFAULT_FREQ, baseline, PHONE);
+    report(`${MODE_LABEL[mode]}・本気AI 3秒`, TRIALS, 'smart', mode, 3, baseline, PHONE);
+    report(`${MODE_LABEL[mode]}・簡易AI 3秒`, TRIALS, 'greedy', mode, 3, baseline, PHONE);
   }
 }
 
-// 人間は0.5秒ごとに最善手を打てない。画面を見て、狙って、指を動かすまでに数秒かかる。
-// ここが崩れていると、数字の上では勝てても人間には理不尽なゲームになる
-const HUMAN_INTERVALS = [3, 5];
-console.log('=== 人間に近い反応の遅さ（3秒/5秒に1回） ===');
-for (const mode of MODES) {
-  const baseline = baselineScores.get(mode);
-  for (const freq of HUMAN_INTERVALS) {
-    report(`${MODE_LABEL[mode]}・本気AI ${freq}秒`, TRIALS, 'smart', mode, freq, baseline);
-  }
-  for (const freq of HUMAN_INTERVALS) {
-    report(`${MODE_LABEL[mode]}・簡易AI ${freq}秒`, TRIALS, 'greedy', mode, freq, baseline);
-  }
+// ============================================================================
+// エクストラステージ「新商品」（広める側）。上の3モードとは勝ち負けが逆なので、集計も別に持つ。
+// 上の出力には一切影響しない（ここで新しく足す節である）
+// ============================================================================
+
+type ProductStrategy = 'p-none' | 'p-sample' | 'p-ads' | 'p-smart' | 'p-sample-event' | 'p-sample-influencer';
+
+interface ProductTrial {
+  outcome: string;
+  reach: number;
+  social: number;
+  score: number;
+  acts: number;
 }
 
-// スマートフォンは盤面が縦長。画面の形で別のゲームになっていないかを見張る
-console.log('=== スマートフォン（縦長） ===');
-for (const mode of MODES) {
-  const baseline = report(`${MODE_LABEL[mode]}・放置`, TRIALS, 'none', mode, DEFAULT_FREQ, undefined, PHONE);
-  report(`${MODE_LABEL[mode]}・本気AI 0.5秒`, TRIALS, 'smart', mode, DEFAULT_FREQ, baseline, PHONE);
-  report(`${MODE_LABEL[mode]}・本気AI 3秒`, TRIALS, 'smart', mode, 3, baseline, PHONE);
-  report(`${MODE_LABEL[mode]}・簡易AI 3秒`, TRIALS, 'greedy', mode, 3, baseline, PHONE);
+/** 未体験の人が半径内に最も多くいる点。adoptersNear を指定すると、愛用者が近くにいる所に限る */
+function susceptibleHotspot(sim: SimState, radius: number, adoptersNear = 0) {
+  let best = { x: 0, y: 0, n: 0 };
+  for (const a of sim.agents) {
+    if (a.state !== 'susceptible') continue;
+    let n = 0;
+    let adopters = 0;
+    for (const b of sim.agents) {
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (b.state === 'susceptible' && d <= radius) n += 1;
+      if (adoptersNear > 0 && b.state === 'infected' && d <= adoptersNear) adopters += 1;
+    }
+    if (adoptersNear > 0 && adopters === 0) continue;
+    if (n > best.n) best = { x: a.x, y: a.y, n };
+  }
+  return best;
+}
+
+/**
+ * 広める側の「考えた打ち方」。人間が画面を見て真似できる判断だけを使う:
+ * インフルエンサーがまだ試していなければ、まず本人に試供品を渡す。
+ * 昼で広場に人が集まっていれば、広場でイベントを開く。
+ * 好感度に余裕があり、あと少しでブームのときだけ広告を打つ。
+ * それ以外は、未体験の人が最も固まっている所に試供品を配る
+ */
+function productSmartAct(sim: SimState): void {
+  const influencer = sim.agents.find((a) => a.trait === 'popular' && a.state === 'susceptible');
+  if (influencer && placeVaccine(sim, influencer.x, influencer.y)) return;
+
+  const def = modeOf('product');
+  const boom = def.boomRatio ?? 0.6;
+  const ratio = sim.infected / Math.max(1, sim.agents.length);
+  if (sim.social / CONFIG.socialMax > 0.7 && ratio >= boom * 0.7 && sim.lockdownCooldown === 0) {
+    if (triggerLockdown(sim)) return;
+  }
+
+  const p = sim.city.plaza;
+  const inPlaza = sim.agents.filter(
+    (a) => a.x >= p.x && a.x <= p.x + p.w && a.y >= p.y && a.y <= p.y + p.h,
+  ).length;
+  const eventActive = sim.zones.some((z) => z.kind === 'event');
+  if (sim.period === 'noon' && inPlaza >= 5 && !eventActive) {
+    if (placeIsolation(sim, p.x + p.w / 2, p.y + p.h / 2)) return;
+  }
+
+  // それ以外は、未体験の人が最も固まっている所に試供品を配る（配る場所の選び方は「試供品のみ」と同じ）
+  const spot = susceptibleHotspot(sim, CONFIG.vaccineRadius);
+  if (spot.n > 0) placeVaccine(sim, spot.x, spot.y);
+}
+
+function productAct(sim: SimState, strategy: ProductStrategy): void {
+  if (strategy === 'p-none') return;
+  if (strategy === 'p-ads') {
+    triggerLockdown(sim);
+    return;
+  }
+  if (strategy === 'p-sample') {
+    const spot = susceptibleHotspot(sim, CONFIG.vaccineRadius);
+    if (spot.n > 0) placeVaccine(sim, spot.x, spot.y);
+    return;
+  }
+  // 切り分け用: 試供品＋昼の広場のイベントだけ
+  if (strategy === 'p-sample-event') {
+    const p = sim.city.plaza;
+    const inPlaza = sim.agents.filter((a) => a.x >= p.x && a.x <= p.x + p.w && a.y >= p.y && a.y <= p.y + p.h).length;
+    if (sim.period === 'noon' && inPlaza >= 5 && !sim.zones.some((z) => z.kind === 'event')) {
+      if (placeIsolation(sim, p.x + p.w / 2, p.y + p.h / 2)) return;
+    }
+    const spot = susceptibleHotspot(sim, CONFIG.vaccineRadius);
+    if (spot.n > 0) placeVaccine(sim, spot.x, spot.y);
+    return;
+  }
+  // 切り分け用: 試供品＋インフルエンサーを先に狙うだけ
+  if (strategy === 'p-sample-influencer') {
+    const inf = sim.agents.find((a) => a.trait === 'popular' && a.state === 'susceptible');
+    if (inf && placeVaccine(sim, inf.x, inf.y)) return;
+    const spot = susceptibleHotspot(sim, CONFIG.vaccineRadius);
+    if (spot.n > 0) placeVaccine(sim, spot.x, spot.y);
+    return;
+  }
+  productSmartAct(sim);
+}
+
+function runProduct(strategy: ProductStrategy, seed: number, actIntervalSec: number, screen: Screen = PC): ProductTrial {
+  const { world, population } = planWorld(screen.w, screen.h);
+  const sim = createSim(world, population, 'product', seed);
+  const steps = Math.ceil(CONFIG.duration / DT);
+  const every = Math.max(1, Math.round(actIntervalSec / DT));
+  for (let i = 0; i < steps; i += 1) {
+    if (i % every === 0) productAct(sim, strategy);
+    step(sim, DT);
+    if (sim.outcome !== 'playing') break;
+  }
+  const r = buildResult(sim);
+  return {
+    outcome: r.outcome,
+    reach: r.reachRatio,
+    social: r.avgSocial,
+    score: r.score,
+    acts: r.actions.isolation + r.actions.vaccine + r.actions.lockdown,
+  };
+}
+
+function reportProduct(
+  label: string,
+  strategy: ProductStrategy,
+  actIntervalSec: number,
+  baselineScore?: number,
+  screen: Screen = PC,
+): number {
+  const out: ProductTrial[] = [];
+  for (let i = 0; i < TRIALS; i += 1) out.push(runProduct(strategy, 1000 + i, actIntervalSec, screen));
+  const boom = out.filter((t) => t.outcome === 'boom').length;
+  const fizzle = out.filter((t) => t.outcome === 'fizzle').length;
+  const score = avg(out.map((t) => t.score));
+  const ratioText = baselineScore === undefined ? '基準' : `${(score / Math.max(1, baselineScore)).toFixed(2)}倍`;
+  console.log(
+    `${label.padEnd(20)} ブーム到来 ${boom}/${TRIALS} | 定着せず ${fizzle}/${TRIALS} | ` +
+      `普及率 ${(avg(out.map((t) => t.reach)) * 100).toFixed(1)}% | 好感度 ${(avg(out.map((t) => t.social)) * 100).toFixed(0)} | ` +
+      `手数 ${avg(out.map((t) => t.acts)).toFixed(1)} | スコア ${score.toFixed(0)} | 放置比 ${ratioText}`,
+  );
+  return score;
+}
+
+console.log('=== 新商品（エクストラ・広める側） ===');
+{
+  const base = reportProduct('放置', 'p-none', DEFAULT_FREQ);
+  reportProduct('試供品のみ', 'p-sample', DEFAULT_FREQ, base);
+  reportProduct('広告連打', 'p-ads', DEFAULT_FREQ, base);
+  reportProduct('試供品＋イベント 3秒', 'p-sample-event', 3, base);
+  reportProduct('試供品＋インフルエンサー 3秒', 'p-sample-influencer', 3, base);
+  reportProduct('試供品のみ 3秒', 'p-sample', 3, base);
+  reportProduct('本気AI 0.5秒', 'p-smart', DEFAULT_FREQ, base);
+  reportProduct('本気AI 3秒', 'p-smart', 3, base);
+  reportProduct('スマホ・本気AI 3秒', 'p-smart', 3, base, PHONE);
 }

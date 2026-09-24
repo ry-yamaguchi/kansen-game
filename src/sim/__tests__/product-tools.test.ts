@@ -56,6 +56,7 @@ describe('新商品 道具: 試供品（placeVaccine）', () => {
     const sim = frozenProduct(101);
     const c = plazaCenter(sim);
     const [untried, adopter, churned] = sim.agents;
+    untried.adoptThreshold = 1; // 新しもの好き
     park(untried, c.x, c.y);
     adopt(adopter);
     park(adopter, c.x + 5, c.y);
@@ -71,6 +72,23 @@ describe('新商品 道具: 試供品（placeVaccine）', () => {
     expect(adopter.state).toBe('infected');
     expect(adopter.infectionTimer).toBe(1000); // 愛用中の人には何もしない（治療されない）
     expect(churned.state).toBe('recovered'); // 飽きた人には何もしない
+  });
+});
+
+describe('新商品 道具: 試供品は慎重な人を動かさない', () => {
+  it('勧められる人数が多い慎重な人は試さず、「1人に勧められた」ぶんとして残る。何度配っても1人分', () => {
+    const sim = frozenProduct(102);
+    const c = plazaCenter(sim);
+    const [cautious] = sim.agents;
+    cautious.adoptThreshold = CONFIG.sampleAdoptMaxThreshold + 1;
+    park(cautious, c.x, c.y);
+    sim.points = CONFIG.maxPoints;
+    placeVaccine(sim, c.x, c.y);
+    expect(cautious.state).toBe('susceptible');
+    expect(cautious.recommendedBy.length).toBe(1);
+    sim.points = CONFIG.maxPoints;
+    placeVaccine(sim, c.x, c.y);
+    expect(cautious.recommendedBy.length).toBe(1);
   });
 });
 

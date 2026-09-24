@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildResult, createSim, step } from '../engine';
+import { breakdownOf, buildResult, createSim, scoreOf, step } from '../engine';
 import type { Agent, SimState } from '../types';
 
 const DT = 1 / 60;
@@ -116,6 +116,35 @@ describe('新商品: 顔の広い人', () => {
   });
 });
 
+describe('新商品: インフルエンサーとイベント', () => {
+  it('インフルエンサーは必ず新しもの好き（1人に勧められれば試す）', () => {
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const sim = createSim(WORLD, 30, 'product', seed);
+      const influencers = sim.agents.filter((a) => a.trait === 'popular');
+      expect(influencers.length).toBe(1);
+      expect(influencers[0].adoptThreshold).toBe(1);
+    }
+  });
+
+  it('イベントの円の中では、勧められたと数えるまでが早い', () => {
+    const inEvent = (withEvent: boolean) => {
+      const sim = frozenProduct(9);
+      const c = plazaCenter(sim);
+      const [target, adopter] = sim.agents;
+      target.adoptThreshold = 4;
+      park(target, c.x, c.y);
+      adopt(adopter);
+      park(adopter, c.x + 8, c.y);
+      if (withEvent) sim.zones.push({ id: 99, x: c.x, y: c.y, r: 105, life: 30, maxLife: 30, kind: 'event' });
+      runFor(sim, 1);
+      return target.recommendedBy.length;
+    };
+    // 1秒では、普段は勧められたことにならない（1.5秒要る）が、イベントの中では数える
+    expect(inEvent(false)).toBe(0);
+    expect(inEvent(true)).toBe(1);
+  });
+});
+
 describe('新商品: 勝ち負けの裏返し', () => {
   it('同時の愛用率がブームの線を超えるとブーム到来で終わる', () => {
     const sim = frozenProduct(4);
@@ -123,6 +152,16 @@ describe('新商品: 勝ち負けの裏返し', () => {
     step(sim, DT);
     expect(sim.outcome).toBe('boom');
     expect(buildResult(sim).outcome).toBe('boom');
+  });
+
+  it('ブーム到来で終わったら、もった時間の割合で点を減らさない（早いブームを罰しない）', () => {
+    const sim = frozenProduct(8);
+    for (const a of sim.agents.slice(0, 20)) adopt(a);
+    step(sim, DT);
+    expect(sim.outcome).toBe('boom');
+    const b = breakdownOf(sim);
+    const core = b.base * b.protectionFactor * b.socialFactor * b.peakFactor;
+    expect(scoreOf(sim)).toBe(Math.max(0, Math.round(core + b.pointsBonus)));
   });
 
   it('愛用中が0人になると定着せずで終わる', () => {
