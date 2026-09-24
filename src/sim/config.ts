@@ -12,6 +12,8 @@ export const CONFIG = {
 
   // --- エージェント ---
   agentRadius: 6.5,
+  /** 感染中に体調を理由に家で休む人の割合。残りは予定どおり通う先へ向かう（研究メモ B3） */
+  sickStayHomeRate: 0.25,
 
   // --- 街 ---
   /** 通りの幅。世界の短辺に対する比率 */
@@ -90,6 +92,12 @@ export const CONFIG = {
    * 距離を取らせる意味でここも下げる。
    */
   lockdownTransmissionFactor: 0.3,
+  /**
+   * 繰り返し発動しても最低限従う人の割合の下限。自粛疲れが際限なく効かないようにする（研究メモ B5）
+   */
+  lockdownComplianceFloor: 0.4,
+  /** ロックダウンを1回発動するごとに、従う割合がここだけ落ちる（自粛疲れ。研究メモ B5） */
+  lockdownFatigue: 0.25,
 
   /** 開始前のカウントダウン（秒） */
   countdown: 3,

@@ -75,6 +75,14 @@ export interface Agent {
   blockedFor: number;
   /** 封鎖のせいで本来の行き先と違う所へ向かっている。封鎖が消えたら予定に戻す */
   redirected: boolean;
+
+  // --- 人の振る舞い（2026-09-24 人の振る舞いの追加で追加） ---
+  /** 感染中でも体調を理由に休まず、予定どおり通う先へ向かうか。false なら家で休む（B3） */
+  sickStaysHome: boolean;
+  /** 街の感染割合がこの値を超えたら、昼の広場・駅を避けて通う先に留まる（B4） */
+  avoidThreshold: number;
+  /** 直近のロックダウンに従っているか。従わない人には速度・感染圧の低下が掛からない（B5） */
+  compliesLockdown: boolean;
 }
 
 export type BlockRole = 'house' | 'plaza' | 'station' | 'school' | 'work';
@@ -193,6 +201,14 @@ export interface Tuning {
   activeSpeedMul: number;
   /** 伝播中の人の方向転換のしやすさ。怒っている人は直進する */
   activeTurnMul: number;
+  /** 留まっている（arrived）者どうしの接触の重み。1で無効（旧来どおり）。感染症・噂話は場所で広がり重い、悪感情は軽い（B2/D1） */
+  stayContact: number;
+  /** どちらかが移動中の接触の重み。1で無効（旧来どおり）。悪感情は通りですれ違う接触が重い（B2/D1） */
+  moveContact: number;
+  /** ワクチン／訂正情報が付ける免疫の強さ（CONFIG.immunityFactor）に掛ける倍率。1で無効。小さいほど予防が強く効く（C2） */
+  immunityMul: number;
+  /** ワクチン／訂正情報の治療効果（CONFIG.treatFactor）に掛ける倍率。1で無効。大きいほど治療が弱く効く（C2） */
+  treatMul: number;
 }
 
 export interface ActionCounts {
@@ -225,6 +241,8 @@ export interface SimState {
   lockdownTimer: number;
   /** ロックダウンの残りクールダウン（秒） */
   lockdownCooldown: number;
+  /** ロックダウンを発動した回数（自粛疲れの計算に使う。B5） */
+  lockdownCount: number;
   actions: ActionCounts;
   pointsSpent: number;
   susceptible: number;

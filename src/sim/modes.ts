@@ -107,6 +107,11 @@ const EPIDEMIC: ModeDef = {
     turnRate: 2.2,
     activeSpeedMul: 1,
     activeTurnMul: 1,
+    // 同じ場所に長く留まる接触が重く、すれ違いは軽い。職場や学校で広がる（B2）
+    stayContact: 1.0,
+    moveContact: 0.35,
+    immunityMul: 1,
+    treatMul: 1,
   },
   waves: [
     {
@@ -188,6 +193,12 @@ const RUMOR: ModeDef = {
     activeSpeedMul: 1.1,
     // 噂している人はあちこち動き回る
     activeTurnMul: 1.9,
+    // 噂は場所を選ばず、離れていても伝わる。留まっていてもすれ違いでもほぼ同じ重みにする（B2）
+    stayContact: 1.0,
+    moveContact: 0.6,
+    // 訂正情報は、まだ聞いていない人への予防がよく効き、すでに噂している人を止める効きは弱い（C2）
+    immunityMul: 0.6,
+    treatMul: 1.4,
     },
   waves: [
     {
@@ -266,6 +277,11 @@ const ANGER: ModeDef = {
     // 怒っている人は速く、まっすぐ突き進む
     activeSpeedMul: 1.6,
     activeTurnMul: 0.45,
+    // 通りですれ違う見知らぬ人どうしが重く、同じ職場の仲間どうしは軽い。感染症・噂話と逆になる（D1）
+    stayContact: 0.45,
+    moveContact: 1.2,
+    immunityMul: 1,
+    treatMul: 1,
   },
   waves: [
     {

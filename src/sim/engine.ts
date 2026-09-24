@@ -74,6 +74,10 @@ function makeAgent(
     stay: homeStay(city, home.x, home.y),
     blockedFor: 0,
     redirected: false,
+
+    sickStaysHome: rng.next() < CONFIG.sickStayHomeRate,
+    avoidThreshold: rand(rng, 0.15, 0.6),
+    compliesLockdown: true,
   };
 }
 
@@ -104,8 +108,15 @@ function periodOf(time: number): Period {
 /** 今この人が向かうべき目的。大型イベント中は隔離区画の外にいる人だけ広場へ割り込む */
 function purposeForPeriod(state: SimState, a: Agent): Purpose {
   if (state.gatherTimer > 0 && a.zone < 0) return 'gather';
+  // 体調が悪くても出勤・登校する人が大半だが、家で休む人もいる（大型イベント中を除く。B3）
+  if (a.state === 'infected' && a.sickStaysHome) return 'home';
   if (state.period === 'morning') return 'commute';
-  if (state.period === 'noon') return 'noon';
+  if (state.period === 'noon') {
+    // 街の感染が目に見えて増えると、しきい値を超えた人は広場・駅を避けて通う先に留まる（B4）
+    const infectedRatio = state.agents.length > 0 ? state.infected / state.agents.length : 0;
+    if (infectedRatio > a.avoidThreshold) return 'commute';
+    return 'noon';
+  }
   return 'home';
 }
 
@@ -371,6 +382,7 @@ export function createSim(
     points: CONFIG.startPoints,
     lockdownTimer: 0,
     lockdownCooldown: 0,
+    lockdownCount: 0,
     actions: { isolation: 0, vaccine: 0, lockdown: 0 },
     pointsSpent: 0,
     susceptible: population,
@@ -524,7 +536,6 @@ function recount(state: SimState): void {
  * （止まったぶん予定が遅れるだけで、行き先そのものは変えない）。
  */
 function moveAgents(state: SimState, dt: number): void {
-  const globalSpeed = state.lockdownTimer > 0 ? CONFIG.lockdownSpeedFactor : 1;
   const t = state.tuning;
   for (const a of state.agents) {
     // 閉じ込められている間は予定を進めない（封鎖が消えたら予定に戻す）
@@ -534,7 +545,9 @@ function moveAgents(state: SimState, dt: number): void {
 
     // 広げている本人は動きが速い（怒りモードなど）。移動中・滞在中のどちらにも掛かる
     const active = a.state === 'infected';
-    const mul = globalSpeed * (a.zone >= 0 ? CONFIG.zoneSpeedFactor : 1) * (active ? t.activeSpeedMul : 1);
+    // ロックダウンの減速は従う人にだけ掛かる。従わない人は普段どおり動く（自粛疲れ。B5）
+    const lockdownSlow = state.lockdownTimer > 0 && a.compliesLockdown ? CONFIG.lockdownSpeedFactor : 1;
+    const mul = lockdownSlow * (a.zone >= 0 ? CONFIG.zoneSpeedFactor : 1) * (active ? t.activeSpeedMul : 1);
     const v = a.speed * mul;
 
     if (a.zone < 0 && !a.arrived && a.path.length > 0) {
@@ -636,6 +649,8 @@ export function step(state: SimState, dt: number): void {
   state.links.length = 0;
   const cr = state.tuning.contactRadius;
   const cr2 = cr * cr;
+  const stayW = state.tuning.stayContact;
+  const moveW = state.tuning.moveContact;
   const agents = state.agents;
   const n = agents.length;
   for (let i = 0; i < n; i += 1) {
@@ -651,7 +666,8 @@ export function step(state: SimState, dt: number): void {
       // 封鎖の境界をまたいだ接触は起きない。中の人どうし・外の人どうしは普通に接触する
       if (a.zone !== b.zone) continue;
       b.contacts += 1;
-      b.load += 1;
+      // 留まっている者どうしは重く、どちらかが移動中なら軽い。モードで変わる（B2/D1）
+      b.load += a.arrived && b.arrived ? stayW : moveW;
       if (state.links.length < 240) state.links.push(i, j);
     }
   }
@@ -662,8 +678,10 @@ export function step(state: SimState, dt: number): void {
     if (a.state !== 'susceptible') continue;
     if (a.load > 0) {
       const stack = Math.min(a.load, CONFIG.maxContactStack);
-      const resist = a.immunity > 0 ? CONFIG.immunityFactor : 1;
-      const lockdown = state.lockdownTimer > 0 ? CONFIG.lockdownTransmissionFactor : 1;
+      // 免疫の強さ（感染圧に掛ける倍率）はモードで変えられる。噂話は訂正情報の予防がよく効く（C2）
+      const resist = a.immunity > 0 ? CONFIG.immunityFactor * state.tuning.immunityMul : 1;
+      // ロックダウンによる感染圧の低下も、従う人にだけ掛かる（自粛疲れ。B5）
+      const lockdown = state.lockdownTimer > 0 && a.compliesLockdown ? CONFIG.lockdownTransmissionFactor : 1;
       a.exposure +=
         state.tuning.exposureGain *
         CONFIG.exposureScale *
@@ -787,7 +805,8 @@ export function placeVaccine(state: SimState, x: number, y: number): boolean {
       a.exposure = 0;
       a.flash = Math.max(a.flash, 0.7);
     } else if (a.state === 'infected') {
-      a.infectionTimer *= CONFIG.treatFactor;
+      // 治療の効きはモードで変えられる。噂話はすでに広まった噂を止めにくい（C2）
+      a.infectionTimer *= CONFIG.treatFactor * state.tuning.treatMul;
       a.flash = Math.max(a.flash, 0.7);
     }
   }
@@ -803,6 +822,25 @@ export function triggerLockdown(state: SimState): boolean {
   state.lockdownTimer = CONFIG.lockdownDuration;
   state.lockdownCooldown = CONFIG.lockdownCooldown + CONFIG.lockdownDuration;
   state.actions.lockdown += 1;
+
+  // 使うたびに従う人が減る（自粛疲れ）。発動のたびに一人ずつ従うかを決め直す（B5）
+  state.lockdownCount += 1;
+  const complianceRatio = Math.max(
+    CONFIG.lockdownComplianceFloor,
+    1 - CONFIG.lockdownFatigue * (state.lockdownCount - 1),
+  );
+  for (const a of state.agents) {
+    a.compliesLockdown = state.rng.next() < complianceRatio;
+  }
+  if (state.lockdownCount >= 2) {
+    pushNotice(
+      state,
+      `${state.lockdownCount}回目のロックダウン`,
+      `従う人はおよそ${Math.round(complianceRatio * 100)}%です`,
+      'bad',
+    );
+  }
+
   return true;
 }
 

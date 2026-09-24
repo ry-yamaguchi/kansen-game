@@ -41,7 +41,13 @@ describe('介入なしで進めると、時間帯ごとの目的地に大半が�
 
   it('昼20秒時点（通算45秒）で、8割以上が広場か駅の中にいる', () => {
     const sim = scheduleOnly(11);
-    runFor(sim, 45);
+    const steps = Math.round(45 / DT);
+    for (let i = 0; i < steps; i += 1) {
+      // 感染が目に見えて広がると自粛して広場を避ける人が出る（B4。behaviors.test.ts で別途確認する）。
+      // ここでは経路そのものが機能しているかを見たいので、流入で増える人も含め自粛を無効化しておく
+      for (const a of sim.agents) a.avoidThreshold = 1.01;
+      step(sim, DT);
+    }
     const r = ratio(sim, (a) => insideBlock(a, sim.city.plaza) || insideBlock(a, sim.city.station));
     expect(r).toBeGreaterThanOrEqual(ARRIVAL_RATIO);
   });
