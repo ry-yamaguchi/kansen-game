@@ -18,8 +18,9 @@ export type Period = 'morning' | 'noon' | 'evening';
  * - commute: 学校・職場にいる、または向かっている（朝の既定）
  * - noon: 広場か駅にいる、または向かっている（昼の既定）
  * - gather: 大型イベントで広場に集まっている、または向かっている（時間帯に関わらず割り込む）
+ * - event:（新商品モード専用）道具のイベントの円に寄っている、または向かっている（道具/イベント）
  */
-export type Purpose = 'home' | 'commute' | 'noon' | 'gather';
+export type Purpose = 'home' | 'commute' | 'noon' | 'gather' | 'event';
 
 export interface Agent {
   id: number;
@@ -151,6 +152,13 @@ export interface City {
   work: CityBlock;
 }
 
+/**
+ * 区画の種類。
+ * - blockade: 封鎖（感染症・噂話・悪感情）。閉じ込め、出入りを止め、接触を分ける
+ * - event:（新商品モード専用）人を集める円。閉じ込めない・通行止めにしない・接触を分けない（道具/イベント）
+ */
+export type ZoneKind = 'blockade' | 'event';
+
 export interface IsolationZone {
   id: number;
   x: number;
@@ -159,6 +167,7 @@ export interface IsolationZone {
   /** 残り持続時間（秒） */
   life: number;
   maxLife: number;
+  kind: ZoneKind;
 }
 
 export type PulseKind = 'vaccine' | 'zone-expire' | 'outbreak';

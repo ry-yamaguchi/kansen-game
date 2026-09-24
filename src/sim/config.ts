@@ -201,6 +201,24 @@ export const CONFIG = {
   /** boomで終えたとき、残り時間の割合に応じて足す最大ボーナス点（新商品。早くブームにするほど高い） */
   scoreBoomBonusMax: 100,
 
+  // --- 新商品: 道具3つの裏返しと好感度（区切りE2で追加。design-extra-stage.md「道具」・研究メモE3） ---
+  /**
+   * 好感度（state.social / socialMax）が低いほど、愛用中の人の残り時間の減りが速くなる倍率の強さ。
+   * 実際の倍率は 1 + (1 - 好感度) × goodwillChurnMul。好感度0で最大2倍の速さになる。
+   */
+  goodwillChurnMul: 1.0,
+  /** 好感度がこの値未満のあいだ、試すのに要る人数が1人多くなる（押しつけの反発。心理的リアクタンス） */
+  goodwillResistBelow: 0.4,
+  /** イベントが人を集める半径。zoneRadius(105)の2.2倍 */
+  eventAttractRadius: 231,
+  /** イベントの好感度コストの倍率。封鎖の裏返しである広告より嫌がられないため、封鎖(zone)の半分に留める */
+  eventSocialCostMul: 0.5,
+  /**
+   * 広告（triggerLockdown）中に失う好感度が、使うたび大きくなる伸び率。
+   * 実際の倍率は 1 + adSocialCostGrowth × (lockdownCountの発動回数 − 1)。押しつけるほど反発される（研究メモE3）
+   */
+  adSocialCostGrowth: 0.5,
+
   // --- コスト ---
   costs: {
     isolation: 28,

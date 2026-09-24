@@ -10,6 +10,7 @@ import type {
   Agent,
   City,
   GameResult,
+  IsolationZone,
   ModeId,
   Notice,
   Period,
@@ -155,6 +156,8 @@ function periodOf(time: number): Period {
 /** 今この人が向かうべき目的。大型イベント中は隔離区画の外にいる人だけ広場へ割り込む */
 function purposeForPeriod(state: SimState, a: Agent): Purpose {
   if (state.gatherTimer > 0 && a.zone < 0) return 'gather';
+  // イベント（新商品モード専用）: 近くにあれば、時間帯や体調によらず寄っていく（道具/イベント）
+  if (a.zone < 0 && nearestEventZone(state, a)) return 'event';
   // 体調が悪くても出勤・登校する人が大半だが、家で休む人もいる（大型イベント中を除く。B3）
   if (a.state === 'infected' && a.sickStaysHome) return 'home';
   if (state.period === 'morning') return 'commute';
@@ -188,16 +191,46 @@ function targetFor(state: SimState, a: Agent, purpose: Purpose): { x: number; y:
  * purpose を切り替え、新しい経路を計算する。経路は目的が変わったこのタイミングだけで作り、
  * 毎フレームは作り直さない。
  */
-/** 封鎖の円（経路探索に渡す形） */
+/**
+ * 封鎖の円（経路探索に渡す形）。
+ * イベント（新商品モード専用）は通行止めにしないため、経路探索の障害物からは除く（道具/イベント）
+ */
 function blockersOf(state: SimState): Blocker[] {
-  return state.zones.map((z) => ({ x: z.x, y: z.y, r: z.r }));
+  return state.zones.filter((z) => z.kind !== 'event').map((z) => ({ x: z.x, y: z.y, r: z.r }));
 }
 
-/** 場所の区画の中心が封鎖の中なら、その場所は閉まっているとみなす */
+/** 場所の区画の中心が封鎖の中なら、その場所は閉まっているとみなす。イベントは閉めない */
 function isClosed(state: SimState, block: CityBlock): boolean {
   const cx = block.x + block.w / 2;
   const cy = block.y + block.h / 2;
-  return state.zones.some((z) => Math.hypot(cx - z.x, cy - z.y) <= z.r);
+  return state.zones.some((z) => z.kind !== 'event' && Math.hypot(cx - z.x, cy - z.y) <= z.r);
+}
+
+/**
+ * イベント（新商品モード専用）: 人 a から CONFIG.eventAttractRadius 以内にある、いちばん近い
+ * アクティブなイベントの円を返す。無ければ undefined（道具/イベント）。
+ */
+function nearestEventZone(state: SimState, a: Agent): IsolationZone | undefined {
+  let best: IsolationZone | undefined;
+  let bestD2 = Infinity;
+  const reach2 = CONFIG.eventAttractRadius * CONFIG.eventAttractRadius;
+  for (const z of state.zones) {
+    if (z.kind !== 'event') continue;
+    const dx = z.x - a.x;
+    const dy = z.y - a.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 <= reach2 && d2 < bestD2) {
+      bestD2 = d2;
+      best = z;
+    }
+  }
+  return best;
+}
+
+/** イベントの円の中で留まる範囲。中心を囲む正方形を、円からはみ出ない大きさに収める */
+function eventStay(z: IsolationZone): { x: number; y: number; w: number; h: number } {
+  const half = z.r * 0.6; // half×√2 ≈ 0.85r < r なので四隅も円の内側に収まる
+  return { x: z.x - half, y: z.y - half, w: half * 2, h: half * 2 };
 }
 
 /** purpose に応じた本来の行き先の区画。家へ帰るときは null */
@@ -228,8 +261,13 @@ interface TripCandidate {
  */
 function tripCandidates(state: SimState, a: Agent, purpose: Purpose): TripCandidate[] {
   const out: TripCandidate[] = [];
-  const primary = blockFor(state, a, purpose);
-  if (primary) {
+  // イベント（新商品モード専用）: 行き先は CityBlock ではなく円の中の点。blockFor/targetFor は通らず、
+  // 閉じない・塞がないため isClosed も見ない（道具/イベント）
+  const eventZone = purpose === 'event' ? nearestEventZone(state, a) : undefined;
+  const primary = eventZone ? null : blockFor(state, a, purpose);
+  if (eventZone) {
+    out.push({ x: eventZone.x, y: eventZone.y, stay: eventStay(eventZone) });
+  } else if (primary) {
     if (!isClosed(state, primary)) {
       const p = targetFor(state, a, purpose);
       out.push({ x: p.x, y: p.y, stay: blockStay(primary) });
@@ -416,11 +454,23 @@ function periodNoticeOf(period: Period): { title: string; detail: string } {
   return { title: '朝になりました', detail: '人が学校・職場へ向かいます' };
 }
 
-/** 社会活動度。閉じ込めるほど下がり、放っておくと戻る */
+/**
+ * 社会活動度（新商品モードでは好感度）。閉じ込めるほど下がり、放っておくと戻る。
+ *
+ * イベント（新商品モード専用）は封鎖より嫌がられないため、区画1つあたりのコストを
+ * kindごとに変える（道具/イベント）。広告（新商品モード専用のロックダウン）は使うたびに
+ * コストが伸びる（研究メモE3・心理的リアクタンス）。他の3モードはどちらも常に係数1のまま変わらない。
+ */
 function updateSocial(state: SimState, dt: number): void {
   let delta = CONFIG.socialRecovery;
-  delta -= state.zones.length * CONFIG.socialCostPerZone;
-  if (state.lockdownTimer > 0) delta -= CONFIG.socialCostLockdown;
+  for (const z of state.zones) {
+    delta -= z.kind === 'event' ? CONFIG.socialCostPerZone * CONFIG.eventSocialCostMul : CONFIG.socialCostPerZone;
+  }
+  if (state.lockdownTimer > 0) {
+    const adGrowth =
+      state.mode === 'product' ? 1 + CONFIG.adSocialCostGrowth * (state.lockdownCount - 1) : 1;
+    delta -= CONFIG.socialCostLockdown * adGrowth;
+  }
   state.social = Math.max(0, Math.min(CONFIG.socialMax, state.social + delta * dt));
 }
 
@@ -619,7 +669,8 @@ function violatesBlockade(state: SimState, a: Agent): boolean {
     const own = state.zones.find((z) => z.id === a.zone);
     return own ? Math.hypot(a.x - own.x, a.y - own.y) > own.r : false;
   }
-  return state.zones.some((z) => Math.hypot(a.x - z.x, a.y - z.y) < z.r);
+  // イベント（新商品モード専用）は出入り自由。判定から除く（道具/イベント）
+  return state.zones.some((z) => z.kind !== 'event' && Math.hypot(a.x - z.x, a.y - z.y) < z.r);
 }
 
 /** 行く手を阻まれ続けたら行き先を選び直すまでの秒数 */
@@ -648,6 +699,8 @@ function recount(state: SimState): void {
  */
 function moveAgents(state: SimState, dt: number): void {
   const t = state.tuning;
+  // 広告（新商品モード専用のロックダウン）は人の動きを止めない（道具/広告）
+  const isProduct = state.mode === 'product';
   // popular: 広場・職場・学校・駅に留まっている人だけが引き寄せの的になる（家では起きない）。
   // 1フレームに1回だけ集計し、歩いている最中の全員から毎回探させない
   const popularAgents = state.agents.filter(
@@ -662,7 +715,8 @@ function moveAgents(state: SimState, dt: number): void {
     // 広げている本人は動きが速い（怒りモードなど）。移動中・滞在中のどちらにも掛かる
     const active = a.state === 'infected';
     // ロックダウンの減速は従う人にだけ掛かる。従わない人は普段どおり動く（自粛疲れ。B5）
-    const lockdownSlow = state.lockdownTimer > 0 && a.compliesLockdown ? CONFIG.lockdownSpeedFactor : 1;
+    const lockdownSlow =
+      !isProduct && state.lockdownTimer > 0 && a.compliesLockdown ? CONFIG.lockdownSpeedFactor : 1;
     const mul = lockdownSlow * (a.zone >= 0 ? CONFIG.zoneSpeedFactor : 1) * (active ? t.activeSpeedMul : 1);
     const v = a.speed * mul;
 
@@ -747,6 +801,9 @@ export function step(state: SimState, dt: number): void {
           beginTrip(state, a, purposeForPeriod(state, a));
         } else if (a.zone < 0 && a.redirected) {
           beginTrip(state, a, a.purpose);
+        } else if (a.zone < 0 && a.purpose === 'event') {
+          // イベント（新商品モード専用）: 円が消えた。近くに別の円がなければ予定へ戻す（道具/イベント）
+          beginTrip(state, a, purposeForPeriod(state, a));
         }
       }
     }
@@ -780,7 +837,8 @@ export function step(state: SimState, dt: number): void {
     const a = agents[i];
     if (a.state !== 'infected') continue;
     // social: よく人と会う人は届く範囲が広い（B1）。新商品モードのこの区切りでは未対応のため広げない
-    const social = !isProduct && a.trait === 'social';
+    // よく人と会う人（顔の広い人）は届く範囲が広い（B1）。新商品では勧める相手が多くなる
+    const social = a.trait === 'social';
     const reach2 = social ? socialR2 : cr2;
     for (let j = 0; j < n; j += 1) {
       const b = agents[j];
@@ -806,7 +864,9 @@ export function step(state: SimState, dt: number): void {
 
   if (isProduct) {
     // --- 複合的な伝染の判定（研究メモE1/E2） ---
-    // インフルエンサー（popular）に勧められたら2人分と数える。勧められた人数がadoptThreshold以上で試す
+    // インフルエンサー（popular）に勧められたら2人分と数える。勧められた人数がadoptThreshold以上で試す。
+    // 広告（道具/広告）と好感度（道具/好感度の効き目・研究メモE3）で、要る人数を上下させる
+    const sawAd = state.lockdownTimer > 0;
     for (const b of agents) {
       if (b.state !== 'susceptible') continue;
       if (b.recommendedBy.length === 0) continue;
@@ -814,7 +874,12 @@ export function step(state: SimState, dt: number): void {
         (sum, id) => sum + (agents[id]?.trait === 'popular' ? 2 : 1),
         0,
       );
-      if (count >= b.adoptThreshold) {
+      let threshold = b.adoptThreshold;
+      // 広告を見た（従っている）人だけ、1人少なくて済む（下限1）
+      if (sawAd && b.compliesLockdown) threshold = Math.max(1, threshold - 1);
+      // 好感度が低いと押しつけと感じられ、逆に1人多く要る（心理的リアクタンス）
+      if (socialRatio < CONFIG.goodwillResistBelow) threshold += 1;
+      if (count >= threshold) {
         infect(b, state);
         newInfections += 1;
       }
@@ -863,7 +928,9 @@ export function step(state: SimState, dt: number): void {
     });
   for (const a of agents) {
     if (a.state === 'infected') {
-      const recoverMul = medics.length > 0 && nearMedic(a) ? CONFIG.traitMedicRecoverMul : 1;
+      let recoverMul = medics.length > 0 && nearMedic(a) ? CONFIG.traitMedicRecoverMul : 1;
+      // 好感度が低いほど愛用中の人は早く飽きる（道具/好感度の効き目。研究メモE3）
+      if (isProduct) recoverMul *= 1 + (1 - socialRatio) * CONFIG.goodwillChurnMul;
       a.infectionTimer -= dt * recoverMul;
       if (a.infectionTimer <= 0) {
         a.state = 'recovered';
@@ -935,47 +1002,63 @@ export function canPlaceIsolation(state: SimState): boolean {
   return state.zones.length < CONFIG.maxZones;
 }
 
-/** 指定位置に隔離エリアを設置。成功したら true */
+/**
+ * 指定位置に隔離エリアを設置。成功したら true。
+ * 新商品モードでは「イベント」（kind: 'event'）として置く。閉じ込めず、通行止めにもしない
+ * （道具/イベント。design-extra-stage.md「道具」）。寄っていく動きは purposeForPeriod/tripCandidates 側で扱う。
+ */
 export function placeIsolation(state: SimState, x: number, y: number): boolean {
-  // 同時に置ける数を絞ることで、どこを閉じるかの判断を生む
+  // 同時に置ける数を絞ることで、どこを閉じるか（新商品では、どこにイベントを開くか）の判断を生む
   if (!canPlaceIsolation(state)) return false;
   if (!spend(state, CONFIG.costs.isolation)) return false;
   const id = state.nextZoneId;
   state.nextZoneId += 1;
   const r = CONFIG.zoneRadius;
-  const zone = { id, x, y, r, life: CONFIG.zoneLife, maxLife: CONFIG.zoneLife };
+  const kind: IsolationZone['kind'] = state.mode === 'product' ? 'event' : 'blockade';
+  const zone: IsolationZone = { id, x, y, r, life: CONFIG.zoneLife, maxLife: CONFIG.zoneLife, kind };
   state.zones.push(zone);
-  // 円の中にいた人は閉じ込める。封鎖が消えるまで変わらない
-  for (const a of state.agents) {
-    if (a.zone !== -1) continue;
-    if (Math.hypot(a.x - x, a.y - y) <= r) {
-      a.zone = id;
-      a.path = [];
-      a.pathIndex = 0;
-      a.arrived = true;
+  if (kind === 'blockade') {
+    // 円の中にいた人は閉じ込める。封鎖が消えるまで変わらない
+    for (const a of state.agents) {
+      if (a.zone !== -1) continue;
+      if (Math.hypot(a.x - x, a.y - y) <= r) {
+        a.zone = id;
+        a.path = [];
+        a.pathIndex = 0;
+        a.arrived = true;
+      }
     }
-  }
-  // 外の人のうち、封鎖に行く手を塞がれうる人（移動中・行き先が円の中）だけ経路を引き直す
-  for (const a of state.agents) {
-    if (a.zone !== -1) continue;
-    const targetInside = Math.hypot(a.targetX - x, a.targetY - y) <= r;
-    if (!a.arrived || targetInside) beginTrip(state, a, a.purpose);
+    // 外の人のうち、封鎖に行く手を塞がれうる人（移動中・行き先が円の中）だけ経路を引き直す
+    for (const a of state.agents) {
+      if (a.zone !== -1) continue;
+      const targetInside = Math.hypot(a.targetX - x, a.targetY - y) <= r;
+      if (!a.arrived || targetInside) beginTrip(state, a, a.purpose);
+    }
   }
   state.actions.isolation += 1;
   return true;
 }
 
-/** 指定位置にワクチン／治療エリアを展開。成功したら true */
+/**
+ * 指定位置にワクチン／治療エリアを展開。成功したら true。
+ * 新商品モードでは「試供品」になる。範囲内の未体験の人はその場で試す（愛用中になる）。
+ * 飽きた人・すでに愛用中の人には何もしない（道具/試供品）。
+ */
 export function placeVaccine(state: SimState, x: number, y: number): boolean {
   if (!spend(state, CONFIG.costs.vaccine)) return false;
   const r = CONFIG.vaccineRadius;
+  const isProduct = state.mode === 'product';
   for (const a of state.agents) {
     if (Math.hypot(a.x - x, a.y - y) > r) continue;
     if (a.state === 'susceptible') {
-      a.immunity = CONFIG.immunityDuration;
-      a.exposure = 0;
-      a.flash = Math.max(a.flash, 0.7);
-    } else if (a.state === 'infected') {
+      if (isProduct) {
+        infect(a, state); // 試供品: その場で試させる。flash は infect() 側で立つ
+      } else {
+        a.immunity = CONFIG.immunityDuration;
+        a.exposure = 0;
+        a.flash = Math.max(a.flash, 0.7);
+      }
+    } else if (a.state === 'infected' && !isProduct) {
       // 治療の効きはモードで変えられる。噂話はすでに広まった噂を止めにくい（C2）
       a.infectionTimer *= CONFIG.treatFactor * state.tuning.treatMul;
       a.flash = Math.max(a.flash, 0.7);
@@ -1004,10 +1087,14 @@ export function triggerLockdown(state: SimState): boolean {
     a.compliesLockdown = state.rng.next() < complianceRatio;
   }
   if (state.lockdownCount >= 2) {
+    // 新商品モードは「広告」の文言にする（道具/広告。広告疲れの仕組みはロックダウンと共有する）
+    const isProduct = state.mode === 'product';
     pushNotice(
       state,
-      `${state.lockdownCount}回目のロックダウン`,
-      `従う人はおよそ${Math.round(complianceRatio * 100)}%です`,
+      isProduct ? `${state.lockdownCount}回目の広告` : `${state.lockdownCount}回目のロックダウン`,
+      isProduct
+        ? `見てくれる人はおよそ${Math.round(complianceRatio * 100)}%です`
+        : `従う人はおよそ${Math.round(complianceRatio * 100)}%です`,
       'bad',
     );
   }

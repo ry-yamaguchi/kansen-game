@@ -96,6 +96,26 @@ describe('新商品: 複数の人に勧められて初めて試す（複合的�
   });
 });
 
+describe('新商品: 顔の広い人', () => {
+  it('普通の人の届かない距離でも、顔の広い人なら勧められる', () => {
+    const reachOf = (trait: 'social' | null) => {
+      const sim = frozenProduct(7);
+      const c = plazaCenter(sim);
+      const [target, adopter] = sim.agents;
+      target.adoptThreshold = 1;
+      park(target, c.x, c.y);
+      adopt(adopter);
+      adopter.trait = trait;
+      // 接触半径の1.15倍の距離（普通は届かず、1.3倍の顔の広い人なら届く）
+      park(adopter, c.x + sim.tuning.contactRadius * 1.15, c.y);
+      runFor(sim, 3);
+      return target.state;
+    };
+    expect(reachOf(null)).toBe('susceptible');
+    expect(reachOf('social')).toBe('infected');
+  });
+});
+
 describe('新商品: 勝ち負けの裏返し', () => {
   it('同時の愛用率がブームの線を超えるとブーム到来で終わる', () => {
     const sim = frozenProduct(4);
