@@ -28,6 +28,8 @@ export function ResultScreen({ result, onRetry, onChangeMode }: Props) {
   const usedTotal = result.actions.isolation + result.actions.vaccine + result.actions.lockdown;
   const b = result.breakdown;
   const def = modeOf(result.mode);
+  // 広める側（新商品）は見出しの言葉を差し替える。抑える側の3モードは今までどおりに組み立てる
+  const side = def.spreadSide;
 
   return (
     <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="result-title">
@@ -39,26 +41,39 @@ export function ResultScreen({ result, onRetry, onChangeMode }: Props) {
         <h2 className="panel__title" id="result-title">
           {result.outcome === 'collapsed'
             ? `${result.survivedSeconds} 秒でゲームオーバー`
-            : '記録'}
+            : result.outcome === 'boom' && side
+              ? `${result.survivedSeconds} ${side.boomTitle}`
+              : result.outcome === 'fizzle' && side
+                ? `${result.survivedSeconds} ${side.fizzleTitle}`
+                : '記録'}
         </h2>
         <p className="panel__lead">{result.comment}</p>
 
         <div className="rrows">
-          <Row
-            label={`${def.spreadNoun}を抑えた割合`}
-            value={`${Math.round(result.protectionRatio * 100)}%`}
-            strong
-          />
+          {side ? (
+            <Row label={side.reachLabel} value={`${Math.round(result.reachRatio * 100)}%`} strong />
+          ) : (
+            <Row
+              label={`${def.spreadNoun}を抑えた割合`}
+              value={`${Math.round(result.protectionRatio * 100)}%`}
+              strong
+            />
+          )}
           <Row label={`平均${def.socialLabel}`} value={`${Math.round(result.avgSocial * 100)}`} strong />
-          <Row label={`${def.personNoun}のピーク`} value={`${result.peakInfected} 人`} />
-          <Row label={`終了時の${def.personNoun}`} value={`${result.finalInfected} 人`} />
-          <Row label={`のべ${def.spreadNoun}数`} value={`${result.totalInfected} 人`} />
-          <Row label="外部から流入" value={`${result.inflowTotal} 人（最終 ${result.population} 人）`} />
+          <Row label={side ? side.peakLabel : `${def.personNoun}のピーク`} value={`${result.peakInfected} 人`} />
+          <Row label={side ? side.finalLabel : `終了時の${def.personNoun}`} value={`${result.finalInfected} 人`} />
+          <Row label={side ? side.totalLabel : `のべ${def.spreadNoun}数`} value={`${result.totalInfected} 人`} />
           <Row
-            label="使用した対策"
+            label={side ? side.inflowLabel : '外部から流入'}
+            value={`${result.inflowTotal} 人（最終 ${result.population} 人）`}
+          />
+          <Row
+            label={side ? side.actionsLabel : '使用した対策'}
             value={
               usedTotal === 0
-                ? '使いませんでした'
+                ? side
+                  ? side.unusedLabel
+                  : '使いませんでした'
                 : `${def.tools.isolation.short} ${result.actions.isolation} ／ ${def.tools.vaccine.short} ${result.actions.vaccine} ／ ${def.tools.lockdown.short} ${result.actions.lockdown}`
             }
           />
@@ -76,24 +91,24 @@ export function ResultScreen({ result, onRetry, onChangeMode }: Props) {
             <span>{b.base.toLocaleString('ja-JP')}</span>
           </li>
           <li className={b.protectionFactor < 0.2 ? 'is-weak' : undefined}>
-            <span>× {def.spreadNoun}の抑制</span>
+            <span>{side ? side.reachFactorLabel : `× ${def.spreadNoun}の抑制`}</span>
             <span>{Math.round(b.protectionFactor * 100)}%</span>
           </li>
           <li className={b.socialFactor < 0.2 ? 'is-weak' : undefined}>
-            <span>× {def.socialLabel}の維持</span>
+            <span>{side ? side.socialFactorLabel : `× ${def.socialLabel}の維持`}</span>
             <span>{Math.round(b.socialFactor * 100)}%</span>
           </li>
           <li>
-            <span>× {def.personNoun}のピークによる補正</span>
+            <span>{side ? side.peakFactorLabel : `× ${def.personNoun}のピークによる補正`}</span>
             <span>{Math.round(b.peakFactor * 100)}%</span>
           </li>
           <li>
-            <span>＋ 残ポイント</span>
+            <span>{side ? side.pointsLabel : '＋ 残ポイント'}</span>
             <span>{b.pointsBonus.toLocaleString('ja-JP')}</span>
           </li>
         </ul>
         <p className="breakdown__note">
-          抑制と{def.socialLabel}は掛け算です。どちらかが低いと点になりません。
+          {side ? side.note : `抑制と${def.socialLabel}は掛け算です。どちらかが低いと点になりません。`}
         </p>
 
         <button ref={retryRef} type="button" className="cta" onClick={onRetry}>

@@ -1299,6 +1299,7 @@ export function buildResult(state: SimState): GameResult {
   return {
     mode: state.mode,
     population: state.agents.length,
+    reachRatio: state.agents.filter((a) => a.everInfected).length / Math.max(1, state.agents.length),
     protectionRatio,
     avgSocial,
     peakInfected: state.peakInfected,

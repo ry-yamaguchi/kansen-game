@@ -68,6 +68,29 @@ export interface ModeDef {
   waves: WaveEvent[];
   /** 開始画面で色の意味を説明する文 */
   intro: string;
+  /** 開始前のカウントダウン中に出す案内。色の言葉は colors.infected と食い違わないこと */
+  countdownHint: string;
+  /**
+   * 広める側のモード（新商品）だけが持つ言葉。開始画面と結果画面で「抑える」側の言葉と差し替える。
+   * 未指定のモードは、いままでどおり spreadNoun などから「抑える」側の言葉を組み立てる
+   */
+  spreadSide?: {
+    startNote: string;
+    reachLabel: string;
+    peakLabel: string;
+    finalLabel: string;
+    totalLabel: string;
+    inflowLabel: string;
+    actionsLabel: string;
+    unusedLabel: string;
+    reachFactorLabel: string;
+    socialFactorLabel: string;
+    peakFactorLabel: string;
+    pointsLabel: string;
+    note: string;
+    boomTitle: string;
+    fizzleTitle: string;
+  };
 }
 
 const EPIDEMIC: ModeDef = {
@@ -156,6 +179,7 @@ const EPIDEMIC: ModeDef = {
     },
   ],
   intro: '赤が感染者です。近づいた時間が長いほどうつります。',
+  countdownHint: '赤い点の位置を確認してください',
 };
 
 const RUMOR: ModeDef = {
@@ -248,6 +272,7 @@ const RUMOR: ModeDef = {
     },
   ],
   intro: '黄が噂をしている人です。離れていても伝わります。',
+  countdownHint: '黄色い点の位置を確認してください',
 };
 
 const ANGER: ModeDef = {
@@ -336,6 +361,7 @@ const ANGER: ModeDef = {
     },
   ],
   intro: '赤が怒っている人です。速く動き、まっすぐ人に向かいます。',
+  countdownHint: '赤い点の位置を確認してください',
 };
 
 /**
@@ -407,6 +433,25 @@ const PRODUCT: ModeDef = {
   // ウェーブはこの区切りでは作らない
   waves: [],
   intro: '明るく光った人が愛用中です。何人にも勧められると試したくなります。',
+  countdownHint: '光っている点が愛用中の人です。位置を確認してください',
+  spreadSide: {
+    startNote:
+      '押しつけるほど好感度が下がり、対策ポイントの回復も鈍ります。スコアは「広めること」と「好感度を保つこと」の掛け算です。広告に頼りすぎても点になりません。',
+    reachLabel: '普及率（一度でも試した人）',
+    peakLabel: '最大同時愛用者',
+    finalLabel: '終了時の愛用者',
+    totalLabel: 'のべ愛用者',
+    inflowLabel: '駅から来た人',
+    actionsLabel: '使った手',
+    unusedLabel: '使いませんでした',
+    reachFactorLabel: '× 普及',
+    socialFactorLabel: '× 好感度',
+    peakFactorLabel: '× 同時愛用の補正',
+    pointsLabel: '＋ 残ポイント（ブームの上乗せを含む）',
+    note: '普及と好感度は掛け算です。押しつけて広めても点になりません。',
+    boomTitle: '秒でブーム到来',
+    fizzleTitle: '秒で途絶えました',
+  },
 };
 
 export const MODES: Record<ModeId, ModeDef> = {
@@ -418,6 +463,9 @@ export const MODES: Record<ModeId, ModeDef> = {
 
 // product はまだ開始画面から選べない（区切りE3で追加する）。ここに足すと選択肢に出てしまう
 export const MODE_LIST: ModeDef[] = [EPIDEMIC, RUMOR, ANGER];
+
+/** 開始画面で「エクストラ」として別に並べるモード。広める側を遊ぶ */
+export const EXTRA_MODES: ModeDef[] = [PRODUCT];
 
 export function modeOf(id: ModeId): ModeDef {
   return MODES[id];

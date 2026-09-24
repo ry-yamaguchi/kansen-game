@@ -49,6 +49,19 @@ export function Hud({ hud, mode }: Props) {
       tone: 'bad',
     });
   }
+  // 広める側（新商品）: ブームが近いことと、途絶えそうなことを知らせる
+  if (def.boomRatio !== undefined) {
+    if (infectedRatio >= def.boomRatio * 0.7) {
+      const remain = Math.max(0, Math.ceil(def.boomRatio * hud.population - hud.infected));
+      badges.push({
+        key: 'boom',
+        text: `ブームまであと ${remain} 人（同時${def.spreadNoun}率 ${Math.round(def.boomRatio * 100)}% で到来）`,
+        tone: 'good',
+      });
+    } else if (hud.infected <= 2) {
+      badges.push({ key: 'fizzle', text: `${def.states.infected}の人が減っています。途絶えそうです`, tone: 'bad' });
+    }
+  }
   if (hud.transmissionMul > 1.01) {
     badges.push({
       key: 'variant',

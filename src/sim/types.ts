@@ -327,6 +327,8 @@ export interface SimState {
 }
 
 export interface GameResult {
+  /** 一度でも広がった（新商品では一度でも試した）人の割合。新商品の結果画面で「普及率」として出す */
+  reachRatio: number;
   mode: ModeId;
   /** 流入を含めた最終人数 */
   population: number;

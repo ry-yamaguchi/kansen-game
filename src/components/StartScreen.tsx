@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { CONFIG } from '../sim/config';
-import { MODE_LIST, modeOf } from '../sim/modes';
+import { EXTRA_MODES, MODE_LIST, modeOf } from '../sim/modes';
 import type { ModeId } from '../sim/types';
 
 interface Props {
@@ -35,6 +35,27 @@ export function StartScreen({ mode, onSelectMode, onStart }: Props) {
               role="radio"
               aria-checked={m.id === mode}
               className={`mode ${m.id === mode ? 'is-selected' : ''}`}
+              onClick={() => onSelectMode(m.id)}
+            >
+              <span className="mode__dots" aria-hidden="true">
+                <i style={{ background: m.colors.susceptible }} />
+                <i style={{ background: m.colors.infected }} />
+                <i style={{ background: m.colors.recovered }} />
+              </span>
+              <span className="mode__name">{m.label}</span>
+              <span className="mode__tag">{m.tagline}</span>
+            </button>
+          ))}
+        </div>
+        <p className="modes__extra-title">エクストラ — 今度は広める側です</p>
+        <div className="modes modes--extra" role="radiogroup" aria-label="エクストラのモード">
+          {EXTRA_MODES.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              role="radio"
+              aria-checked={m.id === mode}
+              className={`mode mode--extra ${m.id === mode ? 'is-selected' : ''}`}
               onClick={() => onSelectMode(m.id)}
             >
               <span className="mode__dots" aria-hidden="true">
@@ -90,9 +111,15 @@ export function StartScreen({ mode, onSelectMode, onStart }: Props) {
         </ol>
 
         <p className="panel__note">
-          抑え込むほど{def.socialLabel}が下がり、対策ポイントの回復も鈍ります。
-          スコアは「抑えること」と「{def.socialLabel}を保つこと」の掛け算です。
-          どちらかに振り切っても点になりません。
+          {def.spreadSide ? (
+            def.spreadSide.startNote
+          ) : (
+            <>
+              抑え込むほど{def.socialLabel}が下がり、対策ポイントの回復も鈍ります。
+              スコアは「抑えること」と「{def.socialLabel}を保つこと」の掛け算です。
+              どちらかに振り切っても点になりません。
+            </>
+          )}
         </p>
 
         <button ref={startRef} type="button" className="cta" onClick={onStart}>

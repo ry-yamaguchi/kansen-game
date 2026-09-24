@@ -13,7 +13,8 @@ export default function App() {
   const words = modeOf(game.mode);
 
   return (
-    <div className={`app ${hud.danger > 0.6 ? 'app--alert' : ''}`}>
+    // 広める側（新商品）では広がるのは良いことなので、画面全体の赤い警告は出さない
+    <div className={`app ${hud.danger > 0.6 && !words.spreadSide ? 'app--alert' : ''}`}>
       <Hud hud={hud} mode={game.mode} />
 
       <main className="stage">
@@ -43,7 +44,7 @@ export default function App() {
               {game.countdown === 0 ? 'START' : game.countdown}
             </span>
             {game.countdown > 0 ? (
-              <span className="countdown__hint">赤い点の位置を確認してください</span>
+              <span className="countdown__hint">{words.countdownHint}</span>
             ) : null}
           </div>
         ) : null}
