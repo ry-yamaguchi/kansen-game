@@ -294,42 +294,28 @@ function paintRow(
  * 白に近い色で細く重ねる。人数はごく少数（既定4人）なので、毎フレーム直接パスを描いてよい。
  */
 
-/** popular の頭上に置く小さな星 */
-function drawTraitStar(g: CanvasRenderingContext2D, cx: number, cy: number, size: number): void {
+/** バッジの中の星（人気者）。濃い色で塗り、金色のバッジの上で読めるようにする */
+function drawBadgeStar(g: CanvasRenderingContext2D, cx: number, cy: number, size: number): void {
   const spikes = 5;
-  const inner = size * 0.42;
+  const inner = size * 0.45;
   g.beginPath();
   for (let k = 0; k < spikes * 2; k += 1) {
     const rad = k % 2 === 0 ? size : inner;
     const ang = (k / (spikes * 2)) * TAU - Math.PI / 2;
-    const x = cx + Math.cos(ang) * rad;
-    const y = cy + Math.sin(ang) * rad;
-    if (k === 0) g.moveTo(x, y);
-    else g.lineTo(x, y);
+    if (k === 0) g.moveTo(cx + Math.cos(ang) * rad, cy + Math.sin(ang) * rad);
+    else g.lineTo(cx + Math.cos(ang) * rad, cy + Math.sin(ang) * rad);
   }
   g.closePath();
-  g.fillStyle = 'rgba(250,252,255,0.95)';
+  g.fillStyle = 'rgba(69,26,3,0.92)';
   g.fill();
-  g.lineWidth = Math.max(0.6, size * 0.2);
-  g.strokeStyle = 'rgba(8,12,22,0.55)';
-  g.stroke();
 }
 
-/** medic の頭上に置く小さな十字 */
-function drawTraitCross(g: CanvasRenderingContext2D, cx: number, cy: number, size: number): void {
-  g.lineCap = 'round';
-  g.beginPath();
-  g.moveTo(cx, cy - size);
-  g.lineTo(cx, cy + size);
-  g.moveTo(cx - size, cy);
-  g.lineTo(cx + size, cy);
-  // 濃い縁を太く描いてから、白を細く重ねる（縁取り文字と同じ考え方）
-  g.lineWidth = Math.max(2, size * 0.62);
-  g.strokeStyle = 'rgba(8,12,22,0.5)';
-  g.stroke();
-  g.lineWidth = Math.max(1, size * 0.34);
-  g.strokeStyle = 'rgba(250,252,255,0.95)';
-  g.stroke();
+/** バッジの中の白い十字（医療スタッフ） */
+function drawBadgeCross(g: CanvasRenderingContext2D, cx: number, cy: number, size: number): void {
+  const w = size * 0.62;
+  g.fillStyle = 'rgba(250,252,255,0.98)';
+  g.fillRect(cx - w / 2, cy - size, w, size * 2);
+  g.fillRect(cx - size, cy - w / 2, size * 2, w);
 }
 
 // --- スプライトシート -------------------------------------------------------
@@ -427,6 +413,8 @@ export interface CharacterRenderer {
     mode: ModeId,
     /** 変異株などで伝播力が上がっているときの倍率。1が通常 */
     intensity: number,
+    /** 特性持ちの名札の濃さ（0〜1）。開始直後だけ出す */
+    nameTagAlpha?: number,
   ): void;
 }
 
@@ -508,7 +496,7 @@ export function createCharacterRenderer(): CharacterRenderer {
   }
 
   return {
-    drawAgents(ctx, agents, view, radius, mode, intensity) {
+    drawAgents(ctx, agents, view, radius, mode, intensity, nameTagAlpha = 0) {
       if (agents.length === 0) return;
       // 拡大率のわずかな変化でシートを焼き直さないよう、半径は0.25刻みに丸める
       const r = Math.max(2.2, Math.round(radius * 4) / 4);
@@ -664,25 +652,65 @@ export function createCharacterRenderer(): CharacterRenderer {
         ctx.stroke();
       }
 
-      // 特性の印。状態のシルエットは変えず、いちばん上に重ねて常に見えるようにする
+      // 特性の印。状態のシルエットは変えず、いちばん上に重ねて常に見えるようにする。
+      // 小さな記号だけでは盤面の上で見分けられなかったため、色つきのバッジにしてある
+      const badgeR = Math.max(5.2, r * 0.8);
+      const words = modeOf(mode).traits;
       for (const a of agents) {
         if (!a.trait) continue;
         const cx = view.ox + a.x * view.scale;
         const cy = view.oy + a.y * view.scale;
         if (a.trait === 'social') {
-          // 外側の点線の輪（届く範囲が広いことを示す）
-          ctx.setLineDash([Math.max(1.4, r * 0.3), Math.max(1.4, r * 0.34)]);
-          ctx.lineWidth = Math.max(1, r * 0.22);
-          ctx.strokeStyle = 'rgba(248,250,252,0.8)';
+          // 外側の点線の輪（届く範囲が広いことを示す）。濃い縁を敷いてから明るい点線を重ねる
+          ctx.setLineDash([Math.max(2, r * 0.42), Math.max(1.6, r * 0.34)]);
+          ctx.lineWidth = Math.max(2.4, r * 0.42);
+          ctx.strokeStyle = 'rgba(8,12,22,0.55)';
           ctx.beginPath();
-          ctx.arc(cx, cy, r + 6.2, 0, TAU);
+          ctx.arc(cx, cy, r + 5.5, 0, TAU);
+          ctx.stroke();
+          ctx.lineWidth = Math.max(1.4, r * 0.26);
+          ctx.strokeStyle = 'rgba(253,186,116,0.95)';
           ctx.stroke();
           ctx.setLineDash([]);
-        } else if (a.trait === 'popular') {
-          drawTraitStar(ctx, cx, cy - r - 5.5, Math.max(2.6, r * 0.62));
-        } else if (a.trait === 'medic') {
-          drawTraitCross(ctx, cx, cy - r - 5.5, Math.max(2.2, r * 0.56));
+        } else {
+          // 頭の右上に丸いバッジ。人気者は金色に星、医療スタッフは緑に白い十字（救急の印）
+          const bx = cx + r * 0.75;
+          const by = cy - r - badgeR * 0.55;
+          ctx.beginPath();
+          ctx.arc(bx, by, badgeR, 0, TAU);
+          ctx.fillStyle = a.trait === 'popular' ? 'rgba(251,191,36,0.98)' : 'rgba(22,163,74,0.98)';
+          ctx.fill();
+          ctx.lineWidth = Math.max(1.2, badgeR * 0.24);
+          ctx.strokeStyle = 'rgba(8,12,22,0.75)';
+          ctx.stroke();
+          if (a.trait === 'popular') {
+            drawBadgeStar(ctx, bx, by, badgeR * 0.62);
+          } else {
+            drawBadgeCross(ctx, bx, by, badgeR * 0.56);
+          }
         }
+      }
+
+      // 開始直後の名札。特性持ちの頭上に呼び名を出し、盤面の上で「誰が誰か」を見せる
+      if (nameTagAlpha > 0.01) {
+        ctx.save();
+        ctx.globalAlpha = nameTagAlpha;
+        ctx.font = '600 11px system-ui, -apple-system, "Hiragino Sans", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.lineJoin = 'round';
+        for (const a of agents) {
+          if (!a.trait) continue;
+          const cx = view.ox + a.x * view.scale;
+          const top = view.oy + a.y * view.scale - r - badgeR * 1.6 - 2;
+          const label = words[a.trait].label;
+          ctx.lineWidth = 3.2;
+          ctx.strokeStyle = 'rgba(8,12,22,0.9)';
+          ctx.strokeText(label, cx, top);
+          ctx.fillStyle = 'rgba(250,252,255,0.98)';
+          ctx.fillText(label, cx, top);
+        }
+        ctx.restore();
       }
     },
   };

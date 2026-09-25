@@ -3,6 +3,13 @@ import type { BlockRole, SimState } from '../sim/types';
 import { createCharacterRenderer } from './characters';
 import type { View } from './view';
 
+/** 人を描く大きさの倍率と、画面上の最小半径（px）。描画だけに効く */
+const AGENT_DRAW_SCALE = 1.5;
+const AGENT_MIN_PX = 5.5;
+/** 特性持ちの名札を出しておく秒数と、消えるまでの秒数 */
+const NAME_TAG_HOLD = 4;
+const NAME_TAG_FADE = 2;
+
 /** 場所（住宅以外）に添える名前 */
 const PLACE_LABELS: Partial<Record<BlockRole, string>> = {
   plaza: '広場',
@@ -176,8 +183,12 @@ export function createRenderer(): Renderer {
    * 伝播中の人の背後のグローもあちらに含まれるため、ここでは何も描かない。
    */
   function drawAgents(ctx: CanvasRenderingContext2D, state: SimState, view: View): void {
-    const r = Math.max(2.2, CONFIG.agentRadius * view.scale);
-    characters.drawAgents(ctx, state.agents, view, r, state.mode, state.transmissionMul);
+    // 街の盤面は縮めて描くため、そのままだと人が画面上で半径4px前後しかなく見分けにくい。
+    // 描く大きさだけを上げる（接触の判定などゲームの中身は変えない）
+    const r = Math.max(AGENT_MIN_PX, CONFIG.agentRadius * view.scale * AGENT_DRAW_SCALE);
+    // 開始直後の数秒だけ、特性持ちの頭上に名札を出して「誰が誰か」を盤面の上で見せる
+    const tag = state.time < NAME_TAG_HOLD ? 1 : Math.max(0, 1 - (state.time - NAME_TAG_HOLD) / NAME_TAG_FADE);
+    characters.drawAgents(ctx, state.agents, view, r, state.mode, state.transmissionMul, tag);
   }
 
   function drawPulses(ctx: CanvasRenderingContext2D, state: SimState, view: View): void {
