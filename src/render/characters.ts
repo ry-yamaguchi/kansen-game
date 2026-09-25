@@ -654,7 +654,7 @@ export function createCharacterRenderer(): CharacterRenderer {
 
       // 特性の印。状態のシルエットは変えず、いちばん上に重ねて常に見えるようにする。
       // 小さな記号だけでは盤面の上で見分けられなかったため、色つきのバッジにしてある
-      const badgeR = Math.max(5.2, r * 0.8);
+      const badgeR = Math.max(6.4, r * 1.05);
       const words = modeOf(mode).traits;
       for (const a of agents) {
         if (!a.trait) continue;
@@ -673,6 +673,16 @@ export function createCharacterRenderer(): CharacterRenderer {
           ctx.stroke();
           ctx.setLineDash([]);
         } else {
+          // 体のまわりに色の輪（「輪があるのは特別な人」で揃える）。人気者は金、医療スタッフは緑
+          const ring = a.trait === 'popular' ? 'rgba(251,191,36,0.95)' : 'rgba(34,197,94,0.95)';
+          ctx.lineWidth = Math.max(2.8, r * 0.46);
+          ctx.strokeStyle = 'rgba(8,12,22,0.55)';
+          ctx.beginPath();
+          ctx.arc(cx, cy, r + 3.8, 0, TAU);
+          ctx.stroke();
+          ctx.lineWidth = Math.max(1.6, r * 0.28);
+          ctx.strokeStyle = ring;
+          ctx.stroke();
           // 頭の右上に丸いバッジ。人気者は金色に星、医療スタッフは緑に白い十字（救急の印）
           const bx = cx + r * 0.75;
           const by = cy - r - badgeR * 0.55;
