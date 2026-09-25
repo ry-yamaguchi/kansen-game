@@ -161,7 +161,7 @@ describe('打った手の手応え', () => {
 
     expect(placeVaccine(sim, c.x, c.y)).toBe(true);
     const hit = sim.popups.at(-1)!;
-    expect(hit.text).toBe('+1 人を守りました');
+    expect(hit.text).toBe('+1人を守りました');
     expect(hit.tone).toBe('good');
 
     sim.points = CONFIG.maxPoints;
@@ -234,7 +234,7 @@ describe('打った手の手応え', () => {
     a!.y = c.y;
 
     expect(placeVaccine(sim, c.x, c.y)).toBe(true);
-    expect(sim.popups.at(-1)!.text).toBe('+1 人が試しました');
+    expect(sim.popups.at(-1)!.text).toBe('+1人が試しました');
 
     sim.points = CONFIG.maxPoints;
     expect(placeIsolation(sim, c.x, c.y)).toBe(true);
