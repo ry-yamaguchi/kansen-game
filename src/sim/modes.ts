@@ -52,6 +52,18 @@ export interface ModeDef {
   socialLabel: string;
   /** 対策の呼び名。効果そのものは3モード共通 */
   tools: Record<ToolId, { label: string; short: string; hint: string }>;
+  /**
+   * 演出: 道具を使った位置に出す、手応えの文言（2026-09-25 追加）。
+   * `{n}` は人数に置き換える。道具そのものの効果は3モード共通のまま変えない。文言だけを世界観に合わせる。
+   */
+  effectText: {
+    /** ワクチン系ツールの範囲に対象がいたとき */
+    vaccineHit: string;
+    /** ワクチン系ツールの範囲に対象がいなかったとき */
+    vaccineMiss: string;
+    /** 隔離系ツールで閉じ込めた（新商品は集めた）人数を示すとき。新商品は{n}を使わない固定文言 */
+    isolationHit: string;
+  };
   /** 特性持ちの呼び名と一言の説明（開始画面の凡例に使う）。効果そのものは3モード共通 */
   traits: Record<TraitId, { label: string; hint: string }>;
   /**
@@ -124,6 +136,11 @@ const EPIDEMIC: ModeDef = {
       short: '停止',
       hint: '全員の移動と接触を8秒間抑えます',
     },
+  },
+  effectText: {
+    vaccineHit: '+{n} 人を守りました',
+    vaccineMiss: 'ここには守る人がいません',
+    isolationHit: '隔離 {n}人',
   },
   traits: {
     social: { label: 'よく人と会う人', hint: '感染が広がりやすくなります' },
@@ -213,6 +230,11 @@ const RUMOR: ModeDef = {
       short: '告知',
       hint: '街全体の話題を8秒間そらします',
     },
+  },
+  effectText: {
+    vaccineHit: '+{n}人に先回り',
+    vaccineMiss: 'ここには先回りする相手がいません',
+    isolationHit: '箝口令 {n}人',
   },
   traits: {
     social: { label: '話し好き', hint: '噂が広がりやすくなります' },
@@ -306,6 +328,11 @@ const ANGER: ModeDef = {
       short: '深呼吸',
       hint: '街全体の動きを8秒間止めます',
     },
+  },
+  effectText: {
+    vaccineHit: '+{n} 人を落ち着かせました',
+    vaccineMiss: 'ここには落ち着かせる相手がいません',
+    isolationHit: '冷却 {n}人',
   },
   traits: {
     social: { label: '火種になりやすい人', hint: '怒りが広がりやすくなります' },
@@ -403,6 +430,12 @@ const PRODUCT: ModeDef = {
       short: '広告',
       hint: '8秒間、試しやすくなります。使うほど好感度が下がります',
     },
+  },
+  effectText: {
+    vaccineHit: '+{n} 人が試しました',
+    vaccineMiss: 'ここには試す人がいません',
+    // イベントは何人集まったかを問わない固定文言（{n}は使わない）
+    isolationHit: 'イベント開始',
   },
   traits: {
     social: { label: '顔の広い人', hint: '勧める相手が多くなります' },

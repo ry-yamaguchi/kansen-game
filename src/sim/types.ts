@@ -182,6 +182,23 @@ export interface Pulse {
   kind: PulseKind;
 }
 
+/**
+ * 浮かぶ文字（演出。2026-09-25 追加）。
+ * CHAIN・OUTBREAK・道具を使った手応えを表す。記録と表示だけで、ゲームの数値には関わらない。
+ */
+export interface Popup {
+  id: number;
+  x: number;
+  y: number;
+  text: string;
+  /** bad はモードの広がる色、good は金色、info は白（描画側で解釈する） */
+  tone: 'bad' | 'good' | 'info';
+  /** true なら盤面中央に大きく出す（OUTBREAK!／BUZZ!専用） */
+  big: boolean;
+  age: number;
+  ttl: number;
+}
+
 export interface World {
   w: number;
   h: number;
@@ -268,6 +285,9 @@ export interface SimState {
   rng: Rng;
   zones: IsolationZone[];
   pulses: Pulse[];
+  /** 浮かぶ文字（演出。CHAIN・OUTBREAK・道具の手応え） */
+  popups: Popup[];
+  nextPopupId: number;
   /** 描画用の接触ペア（[iのindex, jのindex, ...] のフラット配列） */
   links: number[];
   /** 経過時間（秒） */
@@ -293,6 +313,19 @@ export interface SimState {
   /** 0..1 の危険度 */
   danger: number;
   nextZoneId: number;
+
+  // --- 演出（CHAIN / OUTBREAK。2026-09-25 追加。記録と表示だけで判定には使わない） ---
+  /** 接触による連鎖の長さ。直前の接触感染からCONFIG.chainWindow秒以内ならそのまま伸びる */
+  chainCount: number;
+  /** 直前に起きた接触感染の時刻。連鎖が続いているかの判定に使う */
+  lastChainAt: number;
+  /** 直前に出したCHAIN文字の位置と時刻。近い場所・短い間隔への連続表示を間引く */
+  lastChainPopup: { x: number; y: number; at: number } | null;
+  /** 最後に感染した人の位置。OUTBREAKの輪をここへ出す */
+  lastInfectionX: number;
+  lastInfectionY: number;
+  /** OUTBREAK／BUZZの残りクールダウン（秒） */
+  outbreakCooldown: number;
 
   // --- 社会活動度 ---
   /** 0..100。隔離やロックダウンで下がり、放っておくと戻る */

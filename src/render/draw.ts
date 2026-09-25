@@ -1,5 +1,6 @@
 import { CONFIG } from '../sim/config';
-import type { BlockRole, SimState } from '../sim/types';
+import { modeOf } from '../sim/modes';
+import type { BlockRole, SimState, World } from '../sim/types';
 import { createCharacterRenderer } from './characters';
 import type { View } from './view';
 
@@ -17,6 +18,19 @@ const PLACE_LABELS: Partial<Record<BlockRole, string>> = {
   school: '学校',
   work: '職場',
 };
+
+/** 演出: 浮かぶ文字（good=金色・info=白）の色。bad はモードの広がる色を使う（drawPopups側で解決する） */
+const POPUP_GOOD_COLOR = '#facc15';
+const POPUP_INFO_COLOR = '#f8fafc';
+
+/** '#rrggbb' 形式の16進色にアルファを付けて rgba() 文字列にする */
+function hexToRgba(hex: string, alpha: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 /** 設置プレビュー。指の位置に何が起きるかを事前に見せる */
 export interface Preview {
@@ -196,6 +210,17 @@ export function createRenderer(): Renderer {
       const t = p.age / p.ttl;
       const cx = view.ox + p.x * view.scale;
       const cy = view.oy + p.y * view.scale;
+      if (p.kind === 'outbreak') {
+        // 演出: OUTBREAK！／BUZZ!の輪。大きく素早く広がり、モードの広がる色で強く見せる
+        const radius = p.r * view.scale * (0.2 + t * 1.15);
+        const alpha = (1 - t) * 0.85;
+        ctx.strokeStyle = hexToRgba(modeOf(state.mode).colors.infected, alpha);
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        continue;
+      }
       const radius = p.r * view.scale * (0.5 + t * 0.6);
       const alpha = (1 - t) * 0.9;
       ctx.strokeStyle =
@@ -207,7 +232,50 @@ export function createRenderer(): Renderer {
     }
   }
 
-  function drawPreview(ctx: CanvasRenderingContext2D, view: View, preview: Preview): void {
+  /**
+   * 演出: 浮かぶ文字（CHAIN・OUTBREAK・道具の手応え）。
+   * 少し上に昇りながら薄れ、出た瞬間に少し大きく弾む。濃い縁取りの太字にする。
+   * OUTBREAK！／BUZZ!（big）は短く左右に揺れる。揺れは描画側の経過時間から決め、simの乱数は使わない。
+   */
+  function drawPopups(
+    ctx: CanvasRenderingContext2D,
+    state: SimState,
+    view: View,
+    cssWidth: number,
+    elapsed: number,
+  ): void {
+    if (state.popups.length === 0) return;
+    const bigFontPx = Math.max(26, Math.min(52, cssWidth * 0.09));
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const p of state.popups) {
+      const t = Math.min(1, p.age / p.ttl);
+      const alpha = 1 - t;
+      // 出た瞬間だけ大きく弾み、すぐ落ち着く
+      const bounce = 1 + 0.5 * Math.exp(-t * 14);
+      const rise = t * (p.big ? 24 : 16);
+      const shakeX = p.big ? Math.sin(elapsed * 26) * 2.5 * Math.max(0, 1 - t * 2.5) : 0;
+      const cx = view.ox + p.x * view.scale + shakeX;
+      const cy = view.oy + p.y * view.scale - rise;
+      const fontPx = (p.big ? bigFontPx : 15) * bounce;
+      // bad はモードの広がる色（危険・悪い出来事の色と揃える）
+      let color = modeOf(state.mode).colors.infected;
+      if (p.tone === 'good') color = POPUP_GOOD_COLOR;
+      else if (p.tone === 'info') color = POPUP_INFO_COLOR;
+
+      ctx.globalAlpha = Math.max(0, alpha);
+      ctx.font = `900 ${fontPx.toFixed(1)}px system-ui, -apple-system, sans-serif`;
+      ctx.lineWidth = p.big ? 6 : 3.5;
+      ctx.strokeStyle = 'rgba(5,8,15,0.9)';
+      ctx.strokeText(p.text, cx, cy);
+      ctx.fillStyle = color;
+      ctx.fillText(p.text, cx, cy);
+    }
+    ctx.restore();
+  }
+
+  function drawPreview(ctx: CanvasRenderingContext2D, view: View, world: World, preview: Preview): void {
     const cx = view.ox + preview.x * view.scale;
     const cy = view.oy + preview.y * view.scale;
     const r = preview.r * view.scale;
@@ -245,16 +313,22 @@ export function createRenderer(): Renderer {
       const label = `${preview.infectedLabel} ${preview.infected} / ${preview.healthyLabel} ${preview.healthy}`;
       ctx.font = '600 13px ui-monospace, SFMono-Regular, Menlo, monospace';
       const tw = ctx.measureText(label).width;
-      const bx = cx - tw / 2 - 8;
-      const by = cy - r - 30;
+      const boxW = tw + 16;
+      const boxH = 22;
+      // 盤面の内側に収める。上端近くに置くと箱が盤面の外へ切れていた不具合の修正（左右も念のため収める）
+      const boardLeft = view.ox;
+      const boardRight = view.ox + world.w * view.scale;
+      const boardTop = view.oy;
+      const bx = Math.min(Math.max(cx - boxW / 2, boardLeft + 2), boardRight - boxW - 2);
+      const by = Math.max(cy - r - 30, boardTop + 2);
       ctx.fillStyle = 'rgba(5,8,15,0.85)';
-      ctx.fillRect(bx, by, tw + 16, 22);
+      ctx.fillRect(bx, by, boxW, boxH);
       ctx.strokeStyle = 'rgba(148,163,184,0.35)';
       ctx.lineWidth = 1;
-      ctx.strokeRect(bx, by, tw + 16, 22);
+      ctx.strokeRect(bx, by, boxW, boxH);
       ctx.fillStyle = '#e2e8f0';
       ctx.textBaseline = 'middle';
-      ctx.fillText(label, bx + 8, by + 12);
+      ctx.fillText(label, bx + 8, by + boxH / 2);
     }
   }
 
@@ -302,8 +376,10 @@ export function createRenderer(): Renderer {
       drawLinks(ctx, state, view);
       drawAgents(ctx, state, view);
       drawPulses(ctx, state, view);
-      if (preview) drawPreview(ctx, view, preview);
+      if (preview) drawPreview(ctx, view, state.world, preview);
       drawOverlays(ctx, state, cssWidth, cssHeight, elapsed);
+      // 浮かぶ文字はオーバーレイ（危険の赤い縁・ロックダウンの青）の上に出し、埋もれないようにする
+      drawPopups(ctx, state, view, cssWidth, elapsed);
     },
   };
 }

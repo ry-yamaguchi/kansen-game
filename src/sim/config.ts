@@ -236,6 +236,34 @@ export const CONFIG = {
     vaccine: 26,
     lockdown: 30,
   } satisfies Record<ToolId, number>,
+
+  // --- 演出（CHAIN / OUTBREAK / 手応え。2026-09-25 追加）---
+  // ここはすべて記録と表示だけに使う値であり、感染・移動・得点などゲームの数値には関わらない。
+  /** 連鎖と数える間隔（秒）。直前の接触感染からこの秒数以内なら連鎖が続く */
+  chainWindow: 1.5,
+  /** 連鎖数がこの値以上になるたびに「CHAIN ×N」を出す */
+  chainPopupThreshold: 3,
+  /**
+   * 近い場所・短い間隔への連続表示を間引く条件（秒・距離）。
+   * 密集地で連鎖が立て続けに起きても、文字が同じ場所へ重ねて出ないようにする。
+   */
+  chainPopupMinGap: 0.4,
+  chainPopupMinDist: 50,
+  /**
+   * infectionRateがこの値以上でOUTBREAK（新商品はBUZZ）を出す。
+   * 放置では10〜45秒ごろに、本気で抑えている試合では届きにくいことを確認して決めた
+   * （docs/roadmap.md 演出・手応えの節）。
+   */
+  outbreakRate: 4.5,
+  /** OUTBREAKを出してから次まで空ける秒数 */
+  outbreakCooldown: 12,
+  /** OUTBREAKの輪の大きさ・表示秒数 */
+  outbreakPulseRadius: 190,
+  outbreakPulseTtl: 1.2,
+  /** 浮かぶ文字（小）の表示秒数 */
+  popupTtl: 1.1,
+  /** 浮かぶ文字（大。OUTBREAK/BUZZ専用）の表示秒数 */
+  popupTtlBig: 1.6,
 } as const;
 
 export interface ToolMeta {

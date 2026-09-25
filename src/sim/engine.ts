@@ -14,6 +14,7 @@ import type {
   ModeId,
   Notice,
   Period,
+  Popup,
   Purpose,
   SimState,
   TraitId,
@@ -351,6 +352,66 @@ function infect(agent: Agent, state: SimState): void {
   agent.recommendedBy = [];
   agent.recommendProgress = [];
   state.totalInfected += 1;
+  // 演出用: 最後に感染した人の位置を覚えておく（OUTBREAKの輪の起点）。流入・試供品・初期感染も含め、
+  // 呼ばれるたびに更新するだけなのでゲームの数値には影響しない
+  state.lastInfectionX = agent.x;
+  state.lastInfectionY = agent.y;
+}
+
+/**
+ * 演出用: 文字列中の `{n}` を人数へ置き換える。道具の手応えの文言に使う（ModeDef.effectText）。
+ */
+function fillCount(template: string, n: number): string {
+  return template.replace('{n}', String(n));
+}
+
+/** 演出用: 浮かぶ文字を積む。sim は純粋・決定論のまま（乱数・Date.now・DOMは使わない） */
+function pushPopup(
+  state: SimState,
+  x: number,
+  y: number,
+  text: string,
+  tone: Popup['tone'],
+  big: boolean,
+): void {
+  state.nextPopupId += 1;
+  state.popups.push({
+    id: state.nextPopupId,
+    x,
+    y,
+    text,
+    tone,
+    big,
+    age: 0,
+    ttl: big ? CONFIG.popupTtlBig : CONFIG.popupTtl,
+  });
+}
+
+/**
+ * 演出用: 接触による感染を連鎖として数える（呼び出し元は接触感染の2箇所だけ。
+ * 流入・試供品・初期感染はinfect()を直接呼ぶため、ここを通らず連鎖に数えない）。
+ * 直前の接触感染からCONFIG.chainWindow秒以内なら連鎖を伸ばし、超えていたら1から数え直す。
+ * しきい値以上になるたびに、その人の位置へ文字を出す。
+ */
+function registerChainInfection(state: SimState, x: number, y: number): void {
+  state.chainCount = state.time - state.lastChainAt <= CONFIG.chainWindow ? state.chainCount + 1 : 1;
+  state.lastChainAt = state.time;
+  if (state.chainCount >= CONFIG.chainPopupThreshold) pushChainPopup(state, x, y);
+}
+
+/** 演出用: 近い場所・短い間隔への連続表示を間引きつつ、連鎖の文字を積む */
+function pushChainPopup(state: SimState, x: number, y: number): void {
+  const last = state.lastChainPopup;
+  if (
+    last &&
+    state.time - last.at < CONFIG.chainPopupMinGap &&
+    Math.hypot(x - last.x, y - last.y) < CONFIG.chainPopupMinDist
+  ) {
+    return;
+  }
+  state.lastChainPopup = { x, y, at: state.time };
+  const label = state.mode === 'product' ? '口コミ' : 'CHAIN';
+  pushPopup(state, x, y, `${label} ×${state.chainCount}`, 'bad', false);
 }
 
 /**
@@ -497,6 +558,8 @@ export function createSim(
     rng,
     zones: [],
     pulses: [],
+    popups: [],
+    nextPopupId: 1,
     links: [],
     time: 0,
     timeLeft: CONFIG.duration,
@@ -514,6 +577,12 @@ export function createSim(
     infectionRate: 0,
     danger: 0,
     nextZoneId: 1,
+    chainCount: 0,
+    lastChainAt: -Infinity,
+    lastChainPopup: null,
+    lastInfectionX: 0,
+    lastInfectionY: 0,
+    outbreakCooldown: 0,
     social: CONFIG.socialMax,
     transmissionMul: 1,
     resistanceMul: 1,
@@ -820,6 +889,13 @@ export function step(state: SimState, dt: number): void {
     p.age += dt;
     if (p.age >= p.ttl) state.pulses.splice(i, 1);
   }
+  // 演出: 浮かぶ文字の寿命も同じタイミングで進める
+  for (let i = state.popups.length - 1; i >= 0; i -= 1) {
+    const p = state.popups[i];
+    p.age += dt;
+    if (p.age >= p.ttl) state.popups.splice(i, 1);
+  }
+  if (state.outbreakCooldown > 0) state.outbreakCooldown = Math.max(0, state.outbreakCooldown - dt);
 
   moveAgents(state, dt);
 
@@ -892,6 +968,7 @@ export function step(state: SimState, dt: number): void {
       if (count >= threshold) {
         infect(b, state);
         newInfections += 1;
+        registerChainInfection(state, b.x, b.y);
       }
     }
   } else {
@@ -916,6 +993,7 @@ export function step(state: SimState, dt: number): void {
           if (state.rng.next() < CONFIG.infectionChance) {
             infect(a, state);
             newInfections += 1;
+            registerChainInfection(state, a.x, a.y);
           } else {
             a.exposure = CONFIG.exposureThreshold * 0.45;
           }
@@ -996,6 +1074,28 @@ export function step(state: SimState, dt: number): void {
   const paceDanger = Math.min(1, state.infectionRate / 6);
   const sizeDanger = Math.min(1, ratio / 0.3);
   state.danger = Math.min(1, Math.max(paceDanger, sizeDanger * 0.9));
+
+  // --- 演出: OUTBREAK！／BUZZ!（爆発的な広がり） ---
+  // ペース（infectionRate）がしきい値を超えたら、盤面中央に大きく出す。クールダウン中は出さない
+  if (state.infectionRate >= CONFIG.outbreakRate && state.outbreakCooldown <= 0) {
+    state.outbreakCooldown = CONFIG.outbreakCooldown;
+    pushPopup(
+      state,
+      state.world.w / 2,
+      state.world.h / 2,
+      isProduct ? 'BUZZ!' : 'OUTBREAK!',
+      'bad',
+      true,
+    );
+    state.pulses.push({
+      x: state.lastInfectionX,
+      y: state.lastInfectionY,
+      r: CONFIG.outbreakPulseRadius,
+      age: 0,
+      ttl: CONFIG.outbreakPulseTtl,
+      kind: 'outbreak',
+    });
+  }
 }
 
 // --- プレイヤーの介入 -------------------------------------------------
@@ -1027,6 +1127,8 @@ export function placeIsolation(state: SimState, x: number, y: number): boolean {
   const kind: IsolationZone['kind'] = state.mode === 'product' ? 'event' : 'blockade';
   const zone: IsolationZone = { id, x, y, r, life: CONFIG.zoneLife, maxLife: CONFIG.zoneLife, kind };
   state.zones.push(zone);
+  // 演出用: 閉じ込めた（新商品では置いた瞬間に集まっていた）人数
+  let confinedCount = 0;
   if (kind === 'blockade') {
     // 円の中にいた人は閉じ込める。封鎖が消えるまで変わらない
     for (const a of state.agents) {
@@ -1036,6 +1138,7 @@ export function placeIsolation(state: SimState, x: number, y: number): boolean {
         a.path = [];
         a.pathIndex = 0;
         a.arrived = true;
+        confinedCount += 1;
       }
     }
     // 外の人のうち、封鎖に行く手を塞がれうる人（移動中・行き先が円の中）だけ経路を引き直す
@@ -1046,6 +1149,12 @@ export function placeIsolation(state: SimState, x: number, y: number): boolean {
     }
   }
   state.actions.isolation += 1;
+
+  // 演出: 手応えの文字。新商品のイベントは人数を問わない固定文言
+  const words = modeOf(state.mode).effectText;
+  const text = kind === 'event' ? words.isolationHit : fillCount(words.isolationHit, confinedCount);
+  pushPopup(state, x, y, text, 'good', false);
+
   return true;
 }
 
@@ -1061,6 +1170,8 @@ export function placeVaccine(state: SimState, x: number, y: number): boolean {
   if (!spend(state, CONFIG.costs.vaccine)) return false;
   const r = CONFIG.vaccineRadius;
   const isProduct = state.mode === 'product';
+  // 演出用: 効果が及んだ人数（非新商品は免疫を付けた人数、新商品はその場で試した人数）
+  let hitCount = 0;
   for (const a of state.agents) {
     if (Math.hypot(a.x - x, a.y - y) > r) continue;
     if (a.state === 'susceptible') {
@@ -1068,6 +1179,7 @@ export function placeVaccine(state: SimState, x: number, y: number): boolean {
         // 試供品: 新しもの好き・初期採用者はその場で試す。慎重な人には「1人に勧められた」ぶんとして残る
         if (a.adoptThreshold <= CONFIG.sampleAdoptMaxThreshold) {
           infect(a, state); // flash は infect() 側で立つ
+          hitCount += 1;
         } else if (!a.recommendedBy.includes(SAMPLE_RECOMMENDER)) {
           a.recommendedBy.push(SAMPLE_RECOMMENDER);
           a.flash = Math.max(a.flash, 0.7);
@@ -1076,6 +1188,7 @@ export function placeVaccine(state: SimState, x: number, y: number): boolean {
         a.immunity = CONFIG.immunityDuration;
         a.exposure = 0;
         a.flash = Math.max(a.flash, 0.7);
+        hitCount += 1;
       }
     } else if (a.state === 'infected' && !isProduct) {
       // 治療の効きはモードで変えられる。噂話はすでに広まった噂を止めにくい（C2）
@@ -1085,6 +1198,15 @@ export function placeVaccine(state: SimState, x: number, y: number): boolean {
   }
   state.pulses.push({ x, y, r, age: 0, ttl: 0.75, kind: 'vaccine' });
   state.actions.vaccine += 1;
+
+  // 演出: 手応えの文字。0人なら守れなかった旨を、1人以上なら人数を出す
+  const words = modeOf(state.mode).effectText;
+  if (hitCount > 0) {
+    pushPopup(state, x, y, fillCount(words.vaccineHit, hitCount), 'good', false);
+  } else {
+    pushPopup(state, x, y, words.vaccineMiss, 'info', false);
+  }
+
   return true;
 }
 
