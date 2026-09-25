@@ -261,9 +261,9 @@ export const CONFIG = {
   outbreakPulseRadius: 190,
   outbreakPulseTtl: 1.2,
   /** 浮かぶ文字（小）の表示秒数 */
-  popupTtl: 1.1,
+  popupTtl: 1.8,
   /** 浮かぶ文字（大。OUTBREAK/BUZZ専用）の表示秒数 */
-  popupTtlBig: 1.6,
+  popupTtlBig: 2.2,
 } as const;
 
 export interface ToolMeta {
