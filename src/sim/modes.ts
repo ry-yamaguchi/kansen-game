@@ -138,7 +138,7 @@ const EPIDEMIC: ModeDef = {
     },
   },
   effectText: {
-    vaccineHit: '+{n} 人を守りました',
+    vaccineHit: '+{n}人を守りました',
     vaccineMiss: 'ここには守る人がいません',
     isolationHit: '隔離 {n}人',
   },
@@ -330,7 +330,7 @@ const ANGER: ModeDef = {
     },
   },
   effectText: {
-    vaccineHit: '+{n} 人を落ち着かせました',
+    vaccineHit: '+{n}人を落ち着かせました',
     vaccineMiss: 'ここには落ち着かせる相手がいません',
     isolationHit: '冷却 {n}人',
   },
@@ -432,7 +432,7 @@ const PRODUCT: ModeDef = {
     },
   },
   effectText: {
-    vaccineHit: '+{n} 人が試しました',
+    vaccineHit: '+{n}人が試しました',
     vaccineMiss: 'ここには試す人がいません',
     // イベントは何人集まったかを問わない固定文言（{n}は使わない）
     isolationHit: 'イベント開始',
