@@ -242,6 +242,23 @@ describe('打った手の手応え', () => {
   });
 });
 
+describe('浮かぶ文字の重なり', () => {
+  it('同じ場所に続けて打つと、2つ目の文字は上へずらして積まれる（重なって読めなくならない）', () => {
+    const sim = createSim({ w: 1000, h: 600 }, 30, 'epidemic', 21);
+    sim.nextWave = Number.MAX_SAFE_INTEGER;
+    const p = sim.city.plaza;
+    const x = p.x + p.w / 2;
+    const y = p.y + p.h / 2;
+    sim.points = CONFIG.maxPoints;
+    placeVaccine(sim, x, y);
+    sim.points = CONFIG.maxPoints;
+    placeVaccine(sim, x, y);
+    const small = sim.popups.filter((q) => !q.big);
+    expect(small.length).toBe(2);
+    expect(small[1].y).toBeCloseTo(small[0].y - CONFIG.popupStackGap);
+  });
+});
+
 describe('浮かぶ文字の寿命', () => {
   it('ttlを過ぎると消える', () => {
     const sim = createSim(WORLD, 30, 'epidemic', 511);

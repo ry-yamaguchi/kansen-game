@@ -382,15 +382,10 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
         );
         return;
       }
-      if (placeIsolation(sim, preview.x, preview.y)) {
-        pushToast(
-          `${words.tools.isolation.label}を設置しました（${words.states.infected} ${preview.infected} / ${words.states.susceptible} ${preview.healthy}）`,
-        );
-      }
+      // 置けたときの手応えは、盤面のその場に浮かぶ文字で出す（上の通知と二重にしない）
+      placeIsolation(sim, preview.x, preview.y);
     } else if (id === 'vaccine') {
-      if (placeVaccine(sim, preview.x, preview.y)) {
-        pushToast(`${words.tools.vaccine.label}を実施しました`);
-      }
+      placeVaccine(sim, preview.x, preview.y);
     }
     setHud(snapshot(sim));
   }, [pushToast]);

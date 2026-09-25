@@ -264,6 +264,8 @@ export const CONFIG = {
   popupTtl: 1.8,
   /** 浮かぶ文字（大。OUTBREAK/BUZZ専用）の表示秒数 */
   popupTtlBig: 2.2,
+  /** 同じ場所に続けて出る浮かぶ文字を、上へずらす間隔（world units） */
+  popupStackGap: 26,
 } as const;
 
 export interface ToolMeta {

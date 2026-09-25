@@ -375,10 +375,17 @@ function pushPopup(
   big: boolean,
 ): void {
   state.nextPopupId += 1;
+  // 同じ場所に続けて出すと文字が重なって読めないため、近くに出たばかりの文字があれば上へずらして積む
+  let stacked = 0;
+  if (!big) {
+    for (const p of state.popups) {
+      if (!p.big && p.age < p.ttl * 0.7 && Math.hypot(p.x - x, p.y - y) < 60) stacked += 1;
+    }
+  }
   state.popups.push({
     id: state.nextPopupId,
     x,
-    y,
+    y: y - stacked * CONFIG.popupStackGap,
     text,
     tone,
     big,
