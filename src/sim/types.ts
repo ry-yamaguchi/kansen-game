@@ -114,6 +114,16 @@ export interface Agent {
 
 export type BlockRole = 'house' | 'plaza' | 'station' | 'school' | 'work';
 
+/**
+ * 街の外との出入り口（駅・バス停）。x, y は入口の中心（world units）。
+ * 外からの流入（spawnInflow）は、毎回このいずれか1つを選んで現れる（研究メモ F1）。
+ */
+export interface CityEntrance {
+  kind: 'station' | 'bus';
+  x: number;
+  y: number;
+}
+
 /** 街の区画（1マス）。住宅は建物で通れず、それ以外は中を歩ける */
 export interface CityBlock {
   role: BlockRole;
@@ -150,6 +160,8 @@ export interface City {
   station: CityBlock;
   school: CityBlock;
   work: CityBlock;
+  /** 街の外との出入り口。添字0は必ず駅、残り3つはバス停である */
+  entrances: CityEntrance[];
 }
 
 /**
@@ -170,7 +182,7 @@ export interface IsolationZone {
   kind: ZoneKind;
 }
 
-export type PulseKind = 'vaccine' | 'zone-expire' | 'outbreak';
+export type PulseKind = 'vaccine' | 'zone-expire' | 'outbreak' | 'arrival';
 
 /** 一過性の視覚エフェクト */
 export interface Pulse {
@@ -349,6 +361,10 @@ export interface SimState {
   inflowTimer: number;
   /** 流入で入ってきたのべ人数 */
   inflowTotal: number;
+  /** 直近の到着（外からの流入）の記録。演出・計測・「到着を見張る」打ち方に使う。まだ起きていなければ null */
+  lastArrival: { time: number; entrance: number; x: number; y: number; count: number; redirected: boolean } | null;
+  /** 「別の入口から入ってきました」の通知を、1ゲームに1回だけ出すためのフラグ */
+  redirectNoticeShown: boolean;
 
   // --- スコアの素になる時間積分 ---
   /** 非感染率の積分（秒） */

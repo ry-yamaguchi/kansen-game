@@ -107,7 +107,7 @@ export function StartScreen({ mode, onSelectMode, onStart }: Props) {
 
         <p className="panel__note">
           街には住宅・学校・職場・広場・駅があります。朝は学校や職場へ、昼は広場へ、
-          夕方は家へと、時間帯によって人が街を行き来します。
+          夕方は家へと、時間帯によって人が街を行き来します。街の外からは、駅と3か所のバス停から人が入ってきます。
         </p>
 
         <ol className="howto">

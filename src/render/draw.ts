@@ -140,6 +140,35 @@ export function createRenderer(): Renderer {
         ctx.fillText(label, x + w / 2, y + h / 2);
       }
     }
+    // バス停: 駅と並ぶ、街の外から人が入ってくる入口（研究メモ F1）。通りの角に小さな札で示す
+    for (const e of state.city.entrances) {
+      if (e.kind !== 'bus') continue;
+      const cx = view.ox + e.x * view.scale;
+      const cy = view.oy + e.y * view.scale;
+      const w = 40;
+      const h = 18;
+      ctx.fillStyle = 'rgba(15,23,42,0.85)';
+      ctx.strokeStyle = 'rgba(45,212,191,0.55)';
+      ctx.lineWidth = 1;
+      // roundRect は古い Safari に無いため、角を丸めた矩形を自前で描く
+      const x0 = cx - w / 2;
+      const y0 = cy - h / 2;
+      const rr = 5;
+      ctx.beginPath();
+      ctx.moveTo(x0 + rr, y0);
+      ctx.arcTo(x0 + w, y0, x0 + w, y0 + h, rr);
+      ctx.arcTo(x0 + w, y0 + h, x0, y0 + h, rr);
+      ctx.arcTo(x0, y0 + h, x0, y0, rr);
+      ctx.arcTo(x0, y0, x0 + w, y0, rr);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(226,232,240,0.8)';
+      ctx.font = '600 11px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('バス停', cx, cy + 0.5);
+    }
     // 既定へ戻す。あとの描画（プレビューの内訳など）は左揃え・alphabetic を前提にしている
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
@@ -221,6 +250,21 @@ export function createRenderer(): Renderer {
         ctx.stroke();
         continue;
       }
+      if (p.kind === 'arrival') {
+        // 外から人が入ってきた入口。広がる色（新商品は未体験の色）の輪を、内側から外へ2回に分けて広げる
+        const def = modeOf(state.mode);
+        const color = def.spreadSide ? def.colors.susceptible : def.colors.infected;
+        for (const lag of [0, 0.25]) {
+          const tt = Math.max(0, Math.min(1, (p.age / p.ttl - lag) / (1 - lag)));
+          if (tt <= 0 || tt >= 1) continue;
+          ctx.strokeStyle = hexToRgba(color, (1 - tt) * 0.9);
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(cx, cy, p.r * view.scale * (0.15 + tt * 0.85), 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        continue;
+      }
       const radius = p.r * view.scale * (0.5 + t * 0.6);
       const alpha = (1 - t) * 0.9;
       ctx.strokeStyle =
@@ -267,10 +311,16 @@ export function createRenderer(): Renderer {
       ctx.globalAlpha = Math.max(0, alpha);
       ctx.font = `900 ${fontPx.toFixed(1)}px system-ui, -apple-system, sans-serif`;
       ctx.lineWidth = p.big ? 6 : 3.5;
+      // 盤面の端（角のバス停など）に出た文字が切れないよう、盤面の内側へ寄せる
+      const half = ctx.measureText(p.text).width / 2 + ctx.lineWidth;
+      const left = view.ox + half;
+      const right = view.ox + state.world.w * view.scale - half;
+      const x = left <= right ? Math.min(right, Math.max(left, cx)) : view.ox + (state.world.w * view.scale) / 2;
+      const y = Math.max(view.oy + fontPx / 2 + ctx.lineWidth, cy);
       ctx.strokeStyle = 'rgba(5,8,15,0.9)';
-      ctx.strokeText(p.text, cx, cy);
+      ctx.strokeText(p.text, x, y);
       ctx.fillStyle = color;
-      ctx.fillText(p.text, cx, cy);
+      ctx.fillText(p.text, x, y);
     }
     ctx.restore();
   }

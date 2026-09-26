@@ -7,6 +7,7 @@ import { createRng } from './rng';
 import type { Rng } from './rng';
 import type {
   CityBlock,
+  CityEntrance,
   Agent,
   City,
   GameResult,
@@ -205,6 +206,11 @@ function isClosed(state: SimState, block: CityBlock): boolean {
   const cx = block.x + block.w / 2;
   const cy = block.y + block.h / 2;
   return state.zones.some((z) => z.kind !== 'event' && Math.hypot(cx - z.x, cy - z.y) <= z.r);
+}
+
+/** 街の出入り口（駅・バス停）が封鎖の中にあるか。判定は場所の閉鎖判定（isClosed）と同じ考え方である */
+function isEntranceClosed(state: SimState, e: CityEntrance): boolean {
+  return state.zones.some((z) => z.kind !== 'event' && Math.hypot(e.x - z.x, e.y - z.y) <= z.r);
 }
 
 /**
@@ -453,9 +459,12 @@ function pushNotice(state: SimState, title: string, detail: string, tone: Notice
 }
 
 /**
- * 駅の中から感染者を送り込む。
+ * 街の外から感染者を送り込む。
  * これが無いと、一度抑え込んだ時点でプレイヤーのやることが消えてしまう。
- * 駅の中から出てくるようにすることで、駅を押さえる価値が生まれる。
+ * 入ってくる場所は駅とバス停3か所のうち1つを、毎回の流入ごとに選び直す
+ * （研究メモ F1: 持ち込みは1つの入口からではない。1000を超える別々の持ち込みで根づいた例がある）。
+ * 選んだ入口が封鎖されていれば、開いている別の入口へ振り替える（塞いでも遅らせるだけ）。
+ * すべての入口が塞がれているときだけ、選んだ入口の中に閉じ込められる（もとからの動き）。
  * 出てきた人にも家と通う先を割り当て、出発時刻を待たずに今の時間帯の行き先へ向かわせる
  * （もとから街にいた人と同じ「個人差」を待たせる理由が無いため）。
  */
@@ -465,14 +474,49 @@ function spawnInflow(state: SimState): void {
     CONFIG.inflowCountStart + (CONFIG.inflowCountEnd - CONFIG.inflowCountStart) * p,
   );
   const homePool = homeSpots(state.city, HOME_DOORS_PER_HOUSE);
+
+  // 入口を1つ選ぶ（この一団は全員同じ入口を使う）。駅かバス停3か所かは1回のrng抽選で決める
+  const entrances = state.city.entrances;
+  const share = CONFIG.inflowStationShare;
+  const busCount = entrances.length - 1;
+  const u = state.rng.next();
+  let entranceIndex =
+    u < share ? 0 : 1 + Math.min(busCount - 1, Math.floor((u - share) / ((1 - share) / busCount)));
+  let redirected = false;
+  if (isEntranceClosed(state, entrances[entranceIndex])) {
+    // 塞がれていた。開いている入口を、ランダムな位置から巡回して探す（同じ入口に偏らせない）
+    const startOffset = state.rng.int(entrances.length);
+    for (let k = 0; k < entrances.length; k += 1) {
+      const idx = (startOffset + k) % entrances.length;
+      if (!isEntranceClosed(state, entrances[idx])) {
+        entranceIndex = idx;
+        redirected = true;
+        break;
+      }
+    }
+    // 見つからなければ（すべて塞がれている）選んだ入口のまま。今までどおり中に閉じ込める
+  }
+  const entrance = entrances[entranceIndex];
+  const busJitter = state.city.streetWidth * CONFIG.busStopJitterRatio;
+
+  let spawned = 0;
   for (let i = 0; i < count; i += 1) {
     if (state.agents.length >= CONFIG.maxPopulation) break;
     const agent = makeAgent(state.agents.length, state.mode, state.tuning, state.rng, state.city, homePool);
-    const spawn = randomPointInBlock(state.rng, state.city.station, BLOCK_MARGIN);
+    const spawn =
+      entrance.kind === 'station'
+        ? randomPointInBlock(state.rng, state.city.station, BLOCK_MARGIN)
+        : {
+            x: entrance.x + rand(state.rng, -busJitter, busJitter),
+            y: entrance.y + rand(state.rng, -busJitter, busJitter),
+          };
     agent.x = spawn.x;
     agent.y = spawn.y;
     agent.dir = state.rng.next() * TAU;
-    const inside = state.zones.find((z) => Math.hypot(agent.x - z.x, agent.y - z.y) <= z.r);
+    // イベント（新商品モード専用）は閉じ込めない。判定は他の閉鎖判定と同じくkindで見る（道具/イベント）
+    const inside = state.zones.find(
+      (z) => z.kind !== 'event' && Math.hypot(agent.x - z.x, agent.y - z.y) <= z.r,
+    );
     if (inside) {
       agent.zone = inside.id;
       agent.arrived = true;
@@ -480,10 +524,44 @@ function spawnInflow(state: SimState): void {
       beginTrip(state, agent, purposeForPeriod(state, agent));
     }
     state.agents.push(agent);
-    // 新商品モードでは、駅から出てくる人は未体験のまま（感染者として送り込まない）
+    // 新商品モードでは、入ってくる人は未体験のまま（感染者として送り込まない）
     if (state.mode !== 'product') infect(agent, state);
     state.inflowTotal += 1;
+    spawned += 1;
   }
+
+  if (spawned > 0) {
+    state.pulses.push({
+      x: entrance.x,
+      y: entrance.y,
+      r: CONFIG.zoneRadius * 0.6,
+      age: 0,
+      ttl: 0.9,
+      kind: 'arrival',
+    });
+    const words = modeOf(state.mode).effectText;
+    const tone: Popup['tone'] = state.mode === 'product' ? 'info' : 'bad';
+    pushPopup(state, entrance.x, entrance.y, fillCount(words.arrival, spawned), tone, false);
+    state.lastArrival = {
+      time: state.time,
+      entrance: entranceIndex,
+      x: entrance.x,
+      y: entrance.y,
+      count: spawned,
+      redirected,
+    };
+  }
+
+  if (redirected && !state.redirectNoticeShown) {
+    pushNotice(
+      state,
+      '別の入口から入ってきました',
+      '封鎖した入口は避けて、開いている駅やバス停から入ってきます',
+      'bad',
+    );
+    state.redirectNoticeShown = true;
+  }
+
   // 時間が経つほど間隔が詰まる
   const interval =
     CONFIG.inflowIntervalStart + (CONFIG.inflowIntervalEnd - CONFIG.inflowIntervalStart) * p;
@@ -599,6 +677,8 @@ export function createSim(
     nextNoticeId: 1,
     inflowTimer: CONFIG.inflowIntervalStart,
     inflowTotal: 0,
+    lastArrival: null,
+    redirectNoticeShown: false,
     healthySeconds: 0,
     socialSeconds: 0,
     outcome: 'playing',

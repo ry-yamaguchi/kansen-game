@@ -16,6 +16,19 @@ declare const process: { env: Record<string, string | undefined> };
 
 const DT = 1 / 60;
 
+// 調整の試し用: BALANCE_SET="inflowCountEnd=4,inflowStationShare=0.6" のように CONFIG の数値を上書きして測る。
+// ゲーム本体の値は変えない（このプロセスの中だけで効く）。候補を並べて比べ、決まった値を config.ts に書く
+for (const pair of (process.env.BALANCE_SET ?? '').split(',').filter(Boolean)) {
+  const [key, raw] = pair.split('=');
+  const value = Number(raw);
+  const table = CONFIG as unknown as Record<string, unknown>;
+  if (typeof table[key] !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`BALANCE_SET の ${pair} を解釈できない（数値の設定だけを上書きできる）`);
+  }
+  table[key] = value;
+  console.log(`上書き: ${key} = ${value}`);
+}
+
 type Strategy =
   | 'none'
   | 'greedy'
@@ -24,7 +37,11 @@ type Strategy =
   | 'vaccine-only'
   | 'lockdown-only'
   | 'isolation-spam'
-  | 'mixed-spam';
+  | 'mixed-spam'
+  | 'station-iso'
+  | 'station-vax'
+  | 'station-iso-smart'
+  | 'arrival-watch';
 
 interface Trial {
   protection: number;
@@ -144,6 +161,30 @@ function act(sim: SimState, strategy: Strategy, actIndex: number): void {
     return;
   }
 
+  // 「駅に張り付く」: 新しい感染者が駅から入ってくることを知っている人の打ち方。
+  // 感染者がどこにいるかは見ず、駅の上で道具を使い続ける（遊んだ人から出た「簡単に勝てるのでは」の確認用）
+  if (strategy === 'station-iso' || strategy === 'station-vax' || strategy === 'station-iso-smart') {
+    const st = sim.city.station;
+    const cx = st.x + st.w / 2;
+    const cy = st.y + st.h / 2;
+    if (strategy === 'station-vax') {
+      placeVaccine(sim, cx, cy);
+      return;
+    }
+    // 駅を覆う隔離が消えていたら、張り直す
+    const covered = sim.zones.some((z) => Math.hypot(z.x - cx, z.y - cy) <= z.r * 0.5);
+    if (!covered && placeIsolation(sim, cx, cy)) return;
+    if (strategy === 'station-iso-smart' && sim.infected > 0) smartAct(sim);
+    return;
+  }
+
+  // 「到着を見張る」: 入口に人が入ってきたのを見て、数秒以内にその一団を囲む。囲めないときは本気AIと同じ
+  if (strategy === 'arrival-watch') {
+    if (interceptArrival(sim)) return;
+    if (sim.infected > 0) smartAct(sim);
+    return;
+  }
+
   if (sim.infected === 0) return;
 
   if (strategy === 'lockdown-only') {
@@ -170,6 +211,22 @@ function act(sim: SimState, strategy: Strategy, actIndex: number): void {
     return;
   }
   greedyAct(sim);
+}
+
+/**
+ * 直近に入ってきた一団（最後に加わった lastArrival.count 人）のうち、まだ閉じ込められていない感染者を囲む。
+ * 人間が「いま入ってきた」と追えるのは数秒なので、到着から6秒を過ぎた一団は見分けられないものとする
+ */
+function interceptArrival(sim: SimState): boolean {
+  const la = sim.lastArrival;
+  if (!la || sim.time - la.time > 6) return false;
+  const group = sim.agents
+    .slice(sim.agents.length - la.count)
+    .filter((a) => a.state === 'infected' && a.zone === -1);
+  if (group.length === 0) return false;
+  const cx = avg(group.map((a) => a.x));
+  const cy = avg(group.map((a) => a.y));
+  return placeIsolation(sim, cx, cy);
 }
 
 const MIXED_ORDER: ToolId[] = ['isolation', 'vaccine', 'lockdown'];
@@ -332,7 +389,45 @@ function runModeReport(mode: ModeId): void {
 
 // BALANCE_ONLY=product のときは、新商品の節だけを回す（100試合の確認を速くするため）。既定は全部回す
 const ONLY = process.env.BALANCE_ONLY;
-if (ONLY !== 'product') {
+
+// 駅に張り付く打ち方が、状況を見て打つ本気AIより強くなっていないか（BALANCE_ONLY=station で単独で回す）。
+// 2026-09-26、作者の指摘で「駅に隔離を置き直し続けるだけ」が本気AIより強いと分かった。その再発を見張る。
+// 「到着を見張る」は入口を見て入ってきた一団を囲む打ち方で、上手な人の新しい打ち方として強すぎないかを見る
+function runStationReport(): void {
+  console.log('=== 入口に張り付く打ち方と、到着を見張る打ち方（人間に近い3秒/5秒に1回） ===');
+  for (const mode of MODES) {
+    for (const screen of [PC, PHONE]) {
+      const tag = `${MODE_LABEL[mode]}${screen === PHONE ? '・スマホ' : ''}`;
+      const baseline = report(`${tag}・放置`, TRIALS, 'none', mode, DEFAULT_FREQ, undefined, screen);
+      for (const freq of [3, 5]) {
+        report(`${tag}・本気AI ${freq}秒`, TRIALS, 'smart', mode, freq, baseline, screen);
+        report(`${tag}・駅に隔離 ${freq}秒`, TRIALS, 'station-iso', mode, freq, baseline, screen);
+        report(`${tag}・駅にワクチン ${freq}秒`, TRIALS, 'station-vax', mode, freq, baseline, screen);
+        report(`${tag}・駅隔離＋本気 ${freq}秒`, TRIALS, 'station-iso-smart', mode, freq, baseline, screen);
+        report(`${tag}・到着を見張る ${freq}秒`, TRIALS, 'arrival-watch', mode, freq, baseline, screen);
+      }
+    }
+  }
+}
+
+// 調整の比較用の短い節（BALANCE_ONLY=tune）。崩壊率の目安だけを PC で取る
+function runTuneReport(): void {
+  console.log('=== 調整用の目安（PC） ===');
+  for (const mode of MODES) {
+    const baseline = report(`${MODE_LABEL[mode]}・放置`, TRIALS, 'none', mode, DEFAULT_FREQ);
+    report(`${MODE_LABEL[mode]}・本気AI 3秒`, TRIALS, 'smart', mode, 3, baseline);
+    report(`${MODE_LABEL[mode]}・本気AI 5秒`, TRIALS, 'smart', mode, 5, baseline);
+    report(`${MODE_LABEL[mode]}・簡易AI 5秒`, TRIALS, 'greedy', mode, 5, baseline);
+    report(`${MODE_LABEL[mode]}・駅に隔離 3秒`, TRIALS, 'station-iso', mode, 3, baseline);
+  }
+}
+
+if (ONLY === 'station') {
+  runStationReport();
+} else if (ONLY === 'tune') {
+  runTuneReport();
+} else if (ONLY !== 'product') {
+  // BALANCE_ONLY=main のときは、3モードの主な節だけを回す（入口の節と新商品は別に並べて回せる）
   console.log('感染るラボ バランス計測（シード固定・再現可能）。放置比はスコアの倍率である。');
   for (const mode of MODES) runModeReport(mode);
 
@@ -369,6 +464,8 @@ if (ONLY !== 'product') {
     report(`${MODE_LABEL[mode]}・本気AI 3秒`, TRIALS, 'smart', mode, 3, baseline, PHONE);
     report(`${MODE_LABEL[mode]}・簡易AI 3秒`, TRIALS, 'greedy', mode, 3, baseline, PHONE);
   }
+
+  if (ONLY !== 'main') runStationReport();
 }
 
 // ============================================================================
@@ -510,8 +607,8 @@ function reportProduct(
   return score;
 }
 
-console.log('=== 新商品（エクストラ・広める側） ===');
-{
+if (ONLY !== 'station' && ONLY !== 'tune' && ONLY !== 'main') {
+  console.log('=== 新商品（エクストラ・広める側） ===');
   const base = reportProduct('放置', 'p-none', DEFAULT_FREQ);
   reportProduct('試供品のみ', 'p-sample', DEFAULT_FREQ, base);
   reportProduct('広告連打', 'p-ads', DEFAULT_FREQ, base);

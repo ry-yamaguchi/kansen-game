@@ -13,7 +13,7 @@
  */
 import { CONFIG } from './config';
 import type { Rng } from './rng';
-import type { BlockRole, City, CityBlock, CityNode, World } from './types';
+import type { BlockRole, City, CityBlock, CityEntrance, CityNode, World } from './types';
 
 const HORIZONTAL_ROLES: BlockRole[][] = [
   ['house', 'school', 'house', 'work', 'house'],
@@ -76,6 +76,9 @@ export function buildCity(world: World): City {
     return b;
   };
 
+  const station = find('station');
+  const entrances = buildEntrances(station, nodes, rows, cols);
+
   return {
     cols,
     rows,
@@ -84,10 +87,42 @@ export function buildCity(world: World): City {
     nodes,
     houses: blocks.filter((b) => b.role === 'house'),
     plaza: find('plaza'),
-    station: find('station'),
+    station,
     school: find('school'),
     work: find('work'),
+    entrances,
   };
+}
+
+/**
+ * 街の外との出入り口を組み立てる。
+ * 駅は区画の中心。バス停は街の外周4隅の交差点のうち、駅に最も近い1つを除いた残り3つ
+ * （研究メモ F1: 持ち込みは1つの入口からではない。入口を1つ塞いでも、人は別の入口から入ってくる）。
+ * 横長・縦長のどちらでも、駅に隣接する角が自然に1つだけ選ばれて除かれる。
+ */
+function buildEntrances(
+  station: CityBlock,
+  nodes: CityNode[][],
+  rows: number,
+  cols: number,
+): CityEntrance[] {
+  const stationCenter = { x: station.x + station.w / 2, y: station.y + station.h / 2 };
+  const corners = [nodes[0][0], nodes[0][cols], nodes[rows][cols], nodes[rows][0]];
+  let nearest = 0;
+  let nearestDist = Infinity;
+  for (let i = 0; i < corners.length; i += 1) {
+    const d = Math.hypot(corners[i].x - stationCenter.x, corners[i].y - stationCenter.y);
+    if (d < nearestDist) {
+      nearestDist = d;
+      nearest = i;
+    }
+  }
+  const entrances: CityEntrance[] = [{ kind: 'station', x: stationCenter.x, y: stationCenter.y }];
+  for (let i = 0; i < corners.length; i += 1) {
+    if (i === nearest) continue;
+    entrances.push({ kind: 'bus', x: corners[i].x, y: corners[i].y });
+  }
+  return entrances;
 }
 
 // --- 経路探索 ---------------------------------------------------------------

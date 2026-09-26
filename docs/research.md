@@ -165,6 +165,22 @@
 - 出典: [Forced Exposure and Psychological Reactance（Journal of Advertising）](https://www.tandfonline.com/doi/abs/10.1080/00913367.2002.10673678)、
   [Understanding ad avoidance on Facebook（Computers in Human Behavior）](https://www.sciencedirect.com/science/article/abs/pii/S0747563219301736)
 
+## F. 街の外との行き来
+
+### F1. 持ち込みは1つの入口からではない。入口を閉じても遅れるだけ
+
+- 分かっていること: 英国の第1波は、1,000を超える別々の持ち込みから根づいた（ロックダウン前は往来が多く、
+  入国の制限もほとんどなかった）。武漢の交通封鎖は、中国国内での流行の進みを3〜5日遅らせただけで、
+  早期発見・自主隔離・家庭での隔離のほうが効くと見積もられた
+- 写し方: 外から来る人は**駅とバス停3か所**から入ってくる（半分は駅）。**封鎖した入口は避けて、
+  開いている入口から入ってくる**。入口を塞ぎ続けても持ち込みは止まらず、入ってきた後の対応
+  （見つけて囲む・向かう先の人を守る）が勝負になる。
+  作者の指摘（2026-09-26）「駅の上で道具を使い続けると簡単に勝てるのでは」を計測で確かめた結果でもある。
+  駅に隔離を置き直し続けるだけの打ち方で崩壊3〜14%（3秒に1手）と、盤面を見て打つ本気AI（25〜39%）より強かった
+- 扱い: **取り入れた**（2026-09-26）
+- 出典: [Establishment and lineage dynamics of the SARS-CoV-2 epidemic in the UK（Science, 2021）](https://www.science.org/doi/10.1126/science.abf2946)、
+  [The effect of travel restrictions on the spread of the 2019 novel coronavirus (COVID-19) outbreak（Science, 2020）](https://www.science.org/doi/10.1126/science.aba9757)
+
 ---
 
 ## まとめ: モードごとの「どこで広がるか」

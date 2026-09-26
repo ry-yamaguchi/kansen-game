@@ -63,6 +63,8 @@ export interface ModeDef {
     vaccineMiss: string;
     /** 隔離系ツールで閉じ込めた（新商品は集めた）人数を示すとき。新商品は{n}を使わない固定文言 */
     isolationHit: string;
+    /** 外からの流入（到着）で入ってきた人数を示すとき */
+    arrival: string;
   };
   /** 特性持ちの呼び名と一言の説明（開始画面の凡例に使う）。効果そのものは3モード共通 */
   traits: Record<TraitId, { label: string; hint: string }>;
@@ -141,6 +143,7 @@ const EPIDEMIC: ModeDef = {
     vaccineHit: '+{n}人を守りました',
     vaccineMiss: 'ここには守る人がいません',
     isolationHit: '隔離 {n}人',
+    arrival: '感染した{n}人が到着',
   },
   traits: {
     social: { label: 'よく人と会う人', hint: '感染が広がりやすくなります' },
@@ -235,6 +238,7 @@ const RUMOR: ModeDef = {
     vaccineHit: '+{n}人に先回り',
     vaccineMiss: 'ここには先回りする相手がいません',
     isolationHit: '箝口令 {n}人',
+    arrival: '噂している{n}人が到着',
   },
   traits: {
     social: { label: '話し好き', hint: '噂が広がりやすくなります' },
@@ -333,6 +337,7 @@ const ANGER: ModeDef = {
     vaccineHit: '+{n}人を落ち着かせました',
     vaccineMiss: 'ここには落ち着かせる相手がいません',
     isolationHit: '冷却 {n}人',
+    arrival: '怒っている{n}人が到着',
   },
   traits: {
     social: { label: '火種になりやすい人', hint: '怒りが広がりやすくなります' },
@@ -436,6 +441,7 @@ const PRODUCT: ModeDef = {
     vaccineMiss: 'ここには試す人がいません',
     // イベントは何人集まったかを問わない固定文言（{n}は使わない）
     isolationHit: 'イベント開始',
+    arrival: '{n}人が到着',
   },
   traits: {
     social: { label: '顔の広い人', hint: '勧める相手が多くなります' },
@@ -480,7 +486,7 @@ const PRODUCT: ModeDef = {
     peakLabel: '最大同時愛用者',
     finalLabel: '終了時の愛用者',
     totalLabel: 'のべ愛用者',
-    inflowLabel: '駅から来た人',
+    inflowLabel: '街の外から来た人',
     actionsLabel: '使った手',
     unusedLabel: '使いませんでした',
     reachFactorLabel: '× 普及',
