@@ -122,6 +122,7 @@ export function StartScreen({ mode, onSelectMode, onStart }: Props) {
           ) : (
             <>
               抑え込むほど{def.socialLabel}が下がり、対策ポイントの回復も鈍ります。
+              学校や職場を閉じると、行けなくなった人の数だけ{def.socialLabel}が下がります。
               スコアは「抑えること」と「{def.socialLabel}を保つこと」の掛け算です。
               どちらかに振り切っても点になりません。
             </>

@@ -97,6 +97,11 @@ export function Hud({ hud, mode }: Props) {
       tone: 'zone',
     });
   }
+  // 封鎖のせいで行き先を変えた人がいる間だけ出す。社会活動を毎秒削る量に直結するため、数を見せる。
+  // 広める側（新商品）は封鎖を置けないので出さない
+  if (hud.displaced > 0 && !def.spreadSide) {
+    badges.push({ key: 'displaced', text: `閉め出し ${hud.displaced}人`, tone: 'warn' });
+  }
 
   return (
     <header className="hud">

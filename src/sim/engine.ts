@@ -606,12 +606,25 @@ function periodNoticeOf(period: Period): { title: string; detail: string } {
  * イベント（新商品モード専用）は封鎖より嫌がられないため、区画1つあたりのコストを
  * kindごとに変える（道具/イベント）。広告（新商品モード専用のロックダウン）は使うたびに
  * コストが伸びる（研究メモE3・心理的リアクタンス）。他の3モードはどちらも常に係数1のまま変わらない。
+ *
+ * 封鎖（イベントでない区画）があるあいだは、本来の行き先へ行けず振り替えられている人数（displaced）に
+ * 比例して毎秒さらに削る（休校・在宅勤務の代償）。数えるのは置いた瞬間ではなく毎秒なので、
+ * 人が集まる直前に閉じても代償は避けられない。閉じ込められた人は隔離エリアの維持費に含まれるため数えない。
+ * イベントしか置けない新商品モードでは、封鎖が無いので常に0のまま変わらない。
  */
 function updateSocial(state: SimState, dt: number): void {
   let delta = CONFIG.socialRecovery;
   for (const z of state.zones) {
     delta -= z.kind === 'event' ? CONFIG.socialCostPerZone * CONFIG.eventSocialCostMul : CONFIG.socialCostPerZone;
   }
+  let displaced = 0;
+  if (state.zones.some((z) => z.kind !== 'event')) {
+    for (const a of state.agents) {
+      if (a.zone < 0 && a.redirected) displaced += 1;
+    }
+  }
+  state.displaced = displaced;
+  delta -= state.displaced * CONFIG.socialCostPerDisplaced;
   if (state.lockdownTimer > 0) {
     const adGrowth =
       state.mode === 'product' ? 1 + CONFIG.adSocialCostGrowth * (state.lockdownCount - 1) : 1;
@@ -669,6 +682,7 @@ export function createSim(
     lastInfectionY: 0,
     outbreakCooldown: 0,
     social: CONFIG.socialMax,
+    displaced: 0,
     transmissionMul: 1,
     resistanceMul: 1,
     gatherTimer: 0,

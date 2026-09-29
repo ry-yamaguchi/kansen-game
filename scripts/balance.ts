@@ -44,7 +44,9 @@ type Strategy =
   | 'arrival-watch'
   | 'place-camp'
   | 'place-camp-smart'
-  | 'smart-late';
+  | 'smart-late'
+  | 'read-close'
+  | 'read-close-1';
 
 interface Trial {
   protection: number;
@@ -187,6 +189,32 @@ function act(sim: SimState, strategy: Strategy, actIndex: number): void {
   if (strategy === 'place-camp' || strategy === 'place-camp-smart') {
     if (placeCampAct(sim)) return;
     if (strategy === 'place-camp-smart' && sim.infected > 0) smartAct(sim);
+    return;
+  }
+  // 「読んで閉じる」: カウントダウン中に赤い点の向かう先を読み、初期感染者が通う場所（学校か職場）だけを閉じる。
+  // 以後は本気AI。閉じる判断そのものは、盤面を読んでいれば価値が残っていてほしい（直し方の完了条件に使う）
+  // 「1か所だけ読んで閉じる」: 初期感染者の通う先のうち、多く向かう1か所（同数なら学校）だけを閉じる。以後は本気AI
+  if (strategy === 'read-close-1') {
+    if (sim.time < 1) {
+      const infected = sim.agents.filter((a) => a.state === 'infected');
+      const toSchool = infected.filter((a) => a.commuteRole === 'school').length;
+      const b = toSchool * 2 >= infected.length ? sim.city.school : sim.city.work;
+      if (infected.length > 0) placeIsolation(sim, b.x + b.w / 2, b.y + b.h / 2);
+      return;
+    }
+    if (sim.infected > 0) smartAct(sim);
+    return;
+  }
+  if (strategy === 'read-close') {
+    if (sim.time < 1) {
+      const c = sim.city;
+      const blocks = new Set(
+        sim.agents.filter((a) => a.state === 'infected').map((a) => (a.commuteRole === 'school' ? c.school : c.work)),
+      );
+      for (const b of blocks) placeIsolation(sim, b.x + b.w / 2, b.y + b.h / 2);
+      return;
+    }
+    if (sim.infected > 0) smartAct(sim);
     return;
   }
   // 本気AIの初手を6秒遅らせたもの。人は開始直後の数秒、盤面を読んでから打ち始める
@@ -455,17 +483,18 @@ function runTuneReport(): void {
 
 // 場所に張り付く打ち方（BALANCE_ONLY=place）。時間帯の予定だけを見て場所を閉じる手が、盤面を読む手より強くないか
 function runPlaceReport(): void {
-  console.log('=== 場所に張り付く打ち方（時間帯の予定だけを見る）と、初手の遅い本気AI ===');
+  console.log('=== 場所に張り付く打ち方（時間帯の予定だけを見る）と、読んで閉じる打ち方 ===');
   for (const mode of MODES) {
     for (const screen of [PC, PHONE]) {
       const tag = `${MODE_LABEL[mode]}${screen === PHONE ? '・スマホ' : ''}`;
       const baseline = report(`${tag}・放置`, TRIALS, 'none', mode, DEFAULT_FREQ, undefined, screen);
       for (const freq of [3, 5]) {
         report(`${tag}・本気AI ${freq}秒`, TRIALS, 'smart', mode, freq, baseline, screen);
-        report(`${tag}・本気AI初手6秒 ${freq}秒`, TRIALS, 'smart-late', mode, freq, baseline, screen);
         report(`${tag}・場所に張り付く ${freq}秒`, TRIALS, 'place-camp', mode, freq, baseline, screen);
-        report(`${tag}・場所張り付き＋本気 ${freq}秒`, TRIALS, 'place-camp-smart', mode, freq, baseline, screen);
+        report(`${tag}・読んで閉じる ${freq}秒`, TRIALS, 'read-close', mode, freq, baseline, screen);
+        report(`${tag}・1か所だけ閉じる ${freq}秒`, TRIALS, 'read-close-1', mode, freq, baseline, screen);
       }
+      report(`${tag}・場所張り付き＋本気 3秒`, TRIALS, 'place-camp-smart', mode, 3, baseline, screen);
     }
   }
 }

@@ -37,6 +37,8 @@ export interface HudSnapshot {
   social: number;
   /** 設置中の隔離エリア数 */
   zones: number;
+  /** 封鎖のせいで本来の行き先へ行けず、振り替えられている人数（閉じ込められた人は含まない） */
+  displaced: number;
   /** 変異株による感染力の倍率。1 より大きければ変異株が出ている */
   transmissionMul: number;
   /** 変異株による耐性時間の倍率。1 より小さければ短縮されている */
@@ -66,6 +68,7 @@ const EMPTY_HUD: HudSnapshot = {
   lockdownCooldown: 0,
   social: CONFIG.socialMax,
   zones: 0,
+  displaced: 0,
   transmissionMul: 1,
   resistanceMul: 1,
   gatherTimer: 0,
@@ -86,6 +89,7 @@ function snapshot(sim: SimState): HudSnapshot {
     lockdownCooldown: sim.lockdownCooldown,
     social: sim.social,
     zones: sim.zones.length,
+    displaced: sim.displaced,
     transmissionMul: sim.transmissionMul,
     resistanceMul: sim.resistanceMul,
     gatherTimer: sim.gatherTimer,
