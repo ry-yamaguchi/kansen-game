@@ -403,9 +403,9 @@ const ANGER: ModeDef = {
 /**
  * エクストラステージ「新商品」（広める側を遊ぶ。感染症の真逆）。docs/design-extra-stage.md 参照。
  *
- * 区切りE1では、モードの定義・複合的な伝染（複数の人に勧められて初めて試す）・勝ち負けと得点の
- * 裏返しまでを作る。道具の効果の裏返し（E2）と画面（E3）はまだ無い。
- * 開始画面からはまだ選べない（MODE_LIST に含めない）。
+ * 複合的な伝染（複数の人に勧められて初めて試す）・勝ち負けと得点の裏返し・道具の裏返し
+ * （試供品・イベント・広告）を持つ。開始画面では本編の選択肢（MODE_LIST）ではなく、
+ * 「エクストラ」（EXTRA_MODES）として別に並べる。
  */
 const PRODUCT: ModeDef = {
   id: 'product',
@@ -506,7 +506,7 @@ export const MODES: Record<ModeId, ModeDef> = {
   product: PRODUCT,
 };
 
-// product はまだ開始画面から選べない（区切りE3で追加する）。ここに足すと選択肢に出てしまう
+// 本編の3モード。product はここに入れず、下の EXTRA_MODES から「エクストラ」として出す
 export const MODE_LIST: ModeDef[] = [EPIDEMIC, RUMOR, ANGER];
 
 /** 開始画面で「エクストラ」として別に並べるモード。広める側を遊ぶ */
