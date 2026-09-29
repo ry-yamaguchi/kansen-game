@@ -41,7 +41,10 @@ type Strategy =
   | 'station-iso'
   | 'station-vax'
   | 'station-iso-smart'
-  | 'arrival-watch';
+  | 'arrival-watch'
+  | 'place-camp'
+  | 'place-camp-smart'
+  | 'smart-late';
 
 interface Trial {
   protection: number;
@@ -178,6 +181,20 @@ function act(sim: SimState, strategy: Strategy, actIndex: number): void {
     return;
   }
 
+  // 「場所に張り付く」: 感染者を見ず、時間帯の予定だけを見て人が集まる場所を閉じる（朝は学校と職場、昼は広場）。
+  // 2026-09-29、Fable との相談で出た疑い（閉じた場所へ行く人は家に留まるので、代償の無いロックダウンになる）の確認用。
+  // 人が開始直後に2か所を続けて押せることに合わせ、1回の手番で2か所まで置く
+  if (strategy === 'place-camp' || strategy === 'place-camp-smart') {
+    if (placeCampAct(sim)) return;
+    if (strategy === 'place-camp-smart' && sim.infected > 0) smartAct(sim);
+    return;
+  }
+  // 本気AIの初手を6秒遅らせたもの。人は開始直後の数秒、盤面を読んでから打ち始める
+  if (strategy === 'smart-late') {
+    if (sim.time >= 6 && sim.infected > 0) smartAct(sim);
+    return;
+  }
+
   // 「到着を見張る」: 入口に人が入ってきたのを見て、数秒以内にその一団を囲む。囲めないときは本気AIと同じ
   if (strategy === 'arrival-watch') {
     if (interceptArrival(sim)) return;
@@ -227,6 +244,20 @@ function interceptArrival(sim: SimState): boolean {
   const cx = avg(group.map((a) => a.x));
   const cy = avg(group.map((a) => a.y));
   return placeIsolation(sim, cx, cy);
+}
+
+/** 時間帯の予定で人が集まる場所（朝は学校・職場、昼は広場）が閉じていなければ閉じる。置いたら true */
+function placeCampAct(sim: SimState): boolean {
+  const c = sim.city;
+  const targets = sim.period === 'morning' ? [c.school, c.work] : sim.period === 'noon' ? [c.plaza] : [];
+  let placed = false;
+  for (const b of targets) {
+    const cx = b.x + b.w / 2;
+    const cy = b.y + b.h / 2;
+    const covered = sim.zones.some((z) => Math.hypot(z.x - cx, z.y - cy) <= z.r * 0.5);
+    if (!covered && placeIsolation(sim, cx, cy)) placed = true;
+  }
+  return placed;
 }
 
 const MIXED_ORDER: ToolId[] = ['isolation', 'vaccine', 'lockdown'];
@@ -422,8 +453,27 @@ function runTuneReport(): void {
   }
 }
 
+// 場所に張り付く打ち方（BALANCE_ONLY=place）。時間帯の予定だけを見て場所を閉じる手が、盤面を読む手より強くないか
+function runPlaceReport(): void {
+  console.log('=== 場所に張り付く打ち方（時間帯の予定だけを見る）と、初手の遅い本気AI ===');
+  for (const mode of MODES) {
+    for (const screen of [PC, PHONE]) {
+      const tag = `${MODE_LABEL[mode]}${screen === PHONE ? '・スマホ' : ''}`;
+      const baseline = report(`${tag}・放置`, TRIALS, 'none', mode, DEFAULT_FREQ, undefined, screen);
+      for (const freq of [3, 5]) {
+        report(`${tag}・本気AI ${freq}秒`, TRIALS, 'smart', mode, freq, baseline, screen);
+        report(`${tag}・本気AI初手6秒 ${freq}秒`, TRIALS, 'smart-late', mode, freq, baseline, screen);
+        report(`${tag}・場所に張り付く ${freq}秒`, TRIALS, 'place-camp', mode, freq, baseline, screen);
+        report(`${tag}・場所張り付き＋本気 ${freq}秒`, TRIALS, 'place-camp-smart', mode, freq, baseline, screen);
+      }
+    }
+  }
+}
+
 if (ONLY === 'station') {
   runStationReport();
+} else if (ONLY === 'place') {
+  runPlaceReport();
 } else if (ONLY === 'tune') {
   runTuneReport();
 } else if (ONLY !== 'product') {
@@ -607,7 +657,7 @@ function reportProduct(
   return score;
 }
 
-if (ONLY !== 'station' && ONLY !== 'tune' && ONLY !== 'main') {
+if (ONLY !== 'station' && ONLY !== 'tune' && ONLY !== 'main' && ONLY !== 'place') {
   console.log('=== 新商品（エクストラ・広める側） ===');
   const base = reportProduct('放置', 'p-none', DEFAULT_FREQ);
   reportProduct('試供品のみ', 'p-sample', DEFAULT_FREQ, base);
