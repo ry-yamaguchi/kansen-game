@@ -4,7 +4,7 @@
 
 画面の中を動き回る人々のあいだに感染が広がっていく。プレイヤーは街のオペレーターとして、
 限られた対策ポイントで隔離・治療・ロックダウンを打ち、制限時間まで感染者数を抑え込む。
-1プレイ60〜90秒。
+1プレイ75秒。モードは感染症・噂話・悪感情の3つと、広める側を遊ぶエクストラ「新商品」。
 
 眺めるシミュレーションではなく、**「どこに、いつ介入するか」を判断するゲーム**である。
 現実の感染症を予測・再現するものではない。
@@ -20,21 +20,20 @@
 <https://ry-yamaguchi.github.io/kansen-game/>
 
 main へ push されるたびに自動で公開される。
-画面の実装が入るまでは、この URL はまだ開けない。
 
 ## 開発
 
-実装は [Kiro](https://kiro.dev) で進める。
+2026-09-17 に [Kiro](https://kiro.dev) で MVP を作り、2026-09-23 から Claude Code が開発を引き継いでいる。
+開発の指針は [CLAUDE.md](CLAUDE.md)、現在地と次にやることは [docs/roadmap.md](docs/roadmap.md) にある。
 
 | 置き場所                                   | 中身                                         |
 | ------------------------------------------ | -------------------------------------------- |
+| [docs/roadmap.md](docs/roadmap.md)         | 現在地・計測値・次にやること                 |
 | [docs/backlog.md](docs/backlog.md)         | **要望リスト。やってほしいことはここへ書く** |
 | [docs/feedback.md](docs/feedback.md)       | 意見・感想（どなたでも歓迎）                 |
 | [AGENTS.md](AGENTS.md)                     | AI エージェント向けの案内                    |
 | [scripts/note](scripts/note)               | 要望・意見を1行で投げ込む道具（作者用）      |
-| [.kiro/steering/](.kiro/steering/)         | Kiro が常時読む方針と前提                    |
-| `.kiro/specs/`                             | 要件・設計・タスク                           |
-| [.kiro/hooks/](.kiro/hooks/)               | セッション開始時などの自動処理               |
+| [.kiro/](.kiro/)                           | Kiro 時代の指針と自動処理（いまは使わない）  |
 
 ## 意見をお寄せください
 
