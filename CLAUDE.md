@@ -42,13 +42,23 @@ Kiro での開発はその日で終わり、**2026-09-23 から Claude Code が�
 **同じシード＋同じ操作列 → 同じ結果**が崩れると、バランス調整もテストも成立しない。
 （2026-09-17 の実装は `Math.random()` を直接呼んでおり、どの変更が効いたのか測れなかった）
 
+乱数を使う更新は、**開始前のカウントダウンも含めて固定刻み（`STEP`）で回す。** 実時間の `dt` で回すと、
+乱数の使い方がフレームの速さで変わり、同じシードでも試合を再生できない（2026-09-30、記録の再生を作るときに判明。
+`src/sim/replay.ts` の `advanceCountdown`）。
+
 ### 3. バランスは測ってから変える
 
 数値を勘で動かさない。
 
 ```bash
 npm run balance   # ヘッドレスで各戦略を回し、抑えた割合・社会活動・スコアを出す
+BALANCE_ONLY=place BALANCE_TRIALS=100 npm run balance   # 節だけ回す（main / station / place / tune / product）
+BALANCE_SET="exposureScale=0.28" npm run balance         # CONFIG の数値を上書きして候補を比べる
+npm run replay -- 記録.json                              # 作者が結果画面で写した試合をそのまま再生する
 ```
+
+**作者の試合の記録は、計測の打ち方より強い証拠である。** 抜け道は2回とも遊んだ人が見つけた（駅・場所）。
+記録が届いたら `npm run replay` で再生し、`REPLAY_SET` で「同じ手が新しい設定でも勝てるか」を確かめる。
 
 **変更の前後で必ず両方を取り、差を見る。** シードは固定なので、同じ条件なら同じ数字が出る。
 
@@ -108,13 +118,15 @@ src/
     types.ts      状態の型
     config.ts     バランス定数（数値はここに集める）
     engine.ts     1ティックの計算、介入の適用、スコア算出
-    modes.ts      感染症／噂話／悪感情のモード定義と用語・イベント
+    modes.ts      感染症／噂話／悪感情／新商品のモード定義と用語・イベント
+    replay.ts     試合の記録の形と、記録からの再生（固定刻み・カウントダウン）
     rng.ts        シード付き乱数
   render/       Canvas 描画（draw.ts・characters.ts・view.ts）
   components/   画面（Hud・ActionBar・StartScreen・ResultScreen）
   hooks/        useGame.ts — ループと状態の受け渡し
 scripts/
   balance.ts    ヘッドレスのバランス計測
+  replay.ts     試合の記録の再生（npm run replay）
   shot.mjs      スクリーンショット取得
 ```
 
