@@ -478,6 +478,8 @@ function runTuneReport(): void {
     report(`${MODE_LABEL[mode]}・本気AI 5秒`, TRIALS, 'smart', mode, 5, baseline);
     report(`${MODE_LABEL[mode]}・簡易AI 5秒`, TRIALS, 'greedy', mode, 5, baseline);
     report(`${MODE_LABEL[mode]}・駅に隔離 3秒`, TRIALS, 'station-iso', mode, 3, baseline);
+    report(`${MODE_LABEL[mode]}・場所に張り付く 3秒`, TRIALS, 'place-camp', mode, 3, baseline);
+    report(`${MODE_LABEL[mode]}・1か所だけ閉じる 3秒`, TRIALS, 'read-close-1', mode, 3, baseline);
   }
 }
 

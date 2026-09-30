@@ -6,6 +6,15 @@ import { modeOf } from '../modes';
 
 const DT = 1 / 60;
 
+/**
+ * 入口の試験は、流入が何回も起きることを前提にしている。感染が広がって早く決着すると流入が起きないため、
+ * 盤面の中での広がりを止めておく（難しさの調整で exposureGain を変えても、この試験の成否が変わらないように）。
+ * 入ってくる人は感染者のまま現れるので、入口の振る舞いは確かめられる
+ */
+function holdSpread(sim: ReturnType<typeof createSim>): void {
+  sim.tuning = { ...sim.tuning, exposureGain: 0 };
+}
+
 /** 外周4隅の交差点を、buildEntrances と同じ順で並べる */
 function outerCorners(city: ReturnType<typeof buildCity>) {
   return [city.nodes[0][0], city.nodes[0][city.cols], city.nodes[city.rows][city.cols], city.nodes[city.rows][0]];
@@ -59,6 +68,7 @@ describe('外からの流入は、駅かバス停3か所のいずれかから現
 
     for (let seed = 1; seed <= 6; seed += 1) {
       const sim = createSim({ w: 1000, h: 600 }, 30, 'epidemic', seed);
+      holdSpread(sim);
       const station = sim.city.station;
       const busEntrances = sim.city.entrances.filter((e) => e.kind === 'bus');
       const busJitter = sim.city.streetWidth * CONFIG.busStopJitterRatio;
@@ -96,6 +106,7 @@ describe('外からの流入は、駅かバス停3か所のいずれかから現
 describe('入口の封鎖: 塞いだ入口は避けて、開いている入口から入ってくる', () => {
   it('駅の入口を塞いでも流入は途切れず、新しい人はその封鎖の外に現れる', () => {
     const sim = createSim({ w: 1000, h: 600 }, 30, 'epidemic', 1);
+    holdSpread(sim);
     sim.points = CONFIG.maxPoints;
     const stationEntrance = sim.city.entrances[0];
     expect(placeIsolation(sim, stationEntrance.x, stationEntrance.y)).toBe(true);

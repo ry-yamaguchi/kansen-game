@@ -154,7 +154,9 @@ const EPIDEMIC: ModeDef = {
   collapseRatio: 0.65,
   tuning: {
     contactRadius: 30,
-    exposureGain: 1.8,
+    // 作者の所感「まだ余裕がある」（2026-09-30）を受けて1.8→2.3。本気AI（3秒に1手）の崩壊が28%→45%前後になる値。
+    // モードごとに効き方が違うため、全体の exposureScale ではなくモードごとに合わせた
+    exposureGain: 2.3,
     spreadMin: 10,
     spreadMax: 14.5,
     // 回復しても長くは守られない。放っておくと、同じ人がまた感染源になる
@@ -250,7 +252,8 @@ const RUMOR: ModeDef = {
   tuning: {
     // 噂は離れていても伝わる。そのぶん1回の接触は弱い
     contactRadius: 44,
-    exposureGain: 1.45,
+    // 作者の所感「まだ余裕がある」（2026-09-30）を受けて1.45→1.74。本気AI（3秒に1手）の崩壊が33%→45%前後になる値
+    exposureGain: 1.74,
     // 飽きるより前に、聞いた人がまた話す時間を確保する
     // （放置すると鎮火が早すぎたため、やや伸ばした）
     spreadMin: 8.5,
@@ -348,7 +351,9 @@ const ANGER: ModeDef = {
   collapseRatio: 0.66,
   tuning: {
     contactRadius: 27,
-    exposureGain: 4.5,
+    // 作者の所感「まだ余裕がある」（2026-09-30）を受けて4.5→4.85。悪感情は少し上げるだけで急に難しくなるため、
+    // ほかのモードより上げ幅を小さくした（本気AI 3秒に1手の崩壊が38%→48%前後）
+    exposureGain: 4.85,
     spreadMin: 7.5,
     spreadMax: 11,
     // すぐ再燃する。冷めても安心できない
