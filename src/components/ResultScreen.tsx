@@ -1,12 +1,20 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { modeOf } from '../sim/modes';
+import type { MatchRecord } from '../sim/replay';
 import type { GameResult } from '../sim/types';
 
 interface Props {
   result: GameResult;
+  /** 遊んだ試合の記録。無いときは記録をコピーする欄を出さない */
+  record: MatchRecord | null;
   onRetry(): void;
   onChangeMode(): void;
 }
+
+/** 記録のコピーの状態。failed のときは、手でコピーできるよう文字そのものを見せる */
+type CopyState = 'idle' | 'copied' | 'failed';
+/** 「コピーしました」を出しておく時間（ミリ秒） */
+const COPIED_MS = 2000;
 
 function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
@@ -17,13 +25,38 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
   );
 }
 
-export function ResultScreen({ result, onRetry, onChangeMode }: Props) {
+export function ResultScreen({ result, record, onRetry, onChangeMode }: Props) {
   const retryRef = useRef<HTMLButtonElement>(null);
+  const [copyState, setCopyState] = useState<CopyState>('idle');
+  const copiedTimerRef = useRef<number | undefined>(undefined);
+  const recordTextRef = useRef<HTMLTextAreaElement>(null);
 
   // もう一度遊ぶのが最短でできるよう、開いた時点でボタンに焦点を当てる
   useEffect(() => {
     retryRef.current?.focus();
   }, []);
+
+  // 画面を離れたあとにタイマーを残さない
+  useEffect(() => () => window.clearTimeout(copiedTimerRef.current), []);
+
+  // うまくコピーできなかったときは、手でコピーできるよう文字の欄へ移る
+  useEffect(() => {
+    if (copyState === 'failed') recordTextRef.current?.focus();
+  }, [copyState]);
+
+  const copyRecord = async () => {
+    if (!record) return;
+    window.clearTimeout(copiedTimerRef.current);
+    try {
+      // クリップボードは https 以外だと使えないことがある。無いときも失敗と同じ扱いにする
+      if (!navigator.clipboard) throw new Error('clipboard is unavailable');
+      await navigator.clipboard.writeText(JSON.stringify(record));
+      setCopyState('copied');
+      copiedTimerRef.current = window.setTimeout(() => setCopyState('idle'), COPIED_MS);
+    } catch {
+      setCopyState('failed');
+    }
+  };
 
   const usedTotal = result.actions.isolation + result.actions.vaccine + result.actions.lockdown;
   const b = result.breakdown;
@@ -117,6 +150,32 @@ export function ResultScreen({ result, onRetry, onChangeMode }: Props) {
         <button type="button" className="cta cta--sub" onClick={onChangeMode}>
           モードを選び直す
         </button>
+
+        {record ? (
+          <div className="record">
+            <button type="button" className="cta cta--sub" aria-live="polite" onClick={copyRecord}>
+              {copyState === 'copied' ? 'コピーしました' : 'この試合の記録をコピー'}
+            </button>
+            <p className="record__note">記録を送っていただくと、同じ試合をそのまま再生して調べられます</p>
+            <div aria-live="polite">
+              {copyState === 'failed' ? (
+                <p className="record__error">
+                  うまくコピーできませんでした。下の文字を選んでコピーしてください
+                </p>
+              ) : null}
+            </div>
+            {copyState === 'failed' ? (
+              <textarea
+                ref={recordTextRef}
+                className="record__text"
+                aria-label="この試合の記録"
+                readOnly
+                value={JSON.stringify(record)}
+                onFocus={(e) => e.currentTarget.select()}
+              />
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );

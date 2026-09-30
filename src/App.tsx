@@ -65,7 +65,12 @@ export default function App() {
           <StartScreen mode={game.mode} onSelectMode={game.setMode} onStart={game.start} />
         ) : null}
         {phase === 'finished' && game.result ? (
-          <ResultScreen result={game.result} onRetry={game.start} onChangeMode={game.backToTitle} />
+          <ResultScreen
+            result={game.result}
+            record={game.record}
+            onRetry={game.start}
+            onChangeMode={game.backToTitle}
+          />
         ) : null}
       </main>
 

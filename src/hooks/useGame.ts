@@ -16,11 +16,22 @@ import {
 import type { GameResult, ModeId, Notice, Period, Phase, SimState, ToolId } from '../sim/types';
 import { createRenderer, type Preview, type Renderer } from '../render/draw';
 import { computeView, screenToWorld } from '../render/view';
+import {
+  MAX_STEPS_PER_FRAME,
+  STEP,
+  advanceCountdown,
+  countdownDisplay,
+  createCountdownProgress,
+  resultOf,
+} from '../sim/replay';
+import type { CountdownProgress, MatchRecord } from '../sim/replay';
 
-/** 固定タイムステップ。フレームレートが揺れても挙動を変えないため */
-const STEP = 1 / 60;
 /** HUD の更新間隔。毎フレーム React を再描画すると無駄が大きい */
 const HUD_INTERVAL = 1 / 15;
+
+/** 記録に残す公開版のコミット（先頭7文字）。公開ビルドでだけ VITE_BUILD_ID が入り、開発中は 'dev' になる */
+const buildEnv: unknown = import.meta.env.VITE_BUILD_ID;
+const BUILD_ID = typeof buildEnv === 'string' && buildEnv !== '' ? buildEnv.slice(0, 7) : 'dev';
 
 export interface HudSnapshot {
   timeLeft: number;
@@ -108,7 +119,12 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
   if (!rendererRef.current) rendererRef.current = createRenderer();
   const pointerActiveRef = useRef(false);
 
-  const countdownRef = useRef(0);
+  // カウントダウンも固定刻みで進める。進み具合は開始のたびに作り直す
+  const countdownRef = useRef<CountdownProgress>(createCountdownProgress());
+  /** 遊び始めてから step を回した回数。記録した手の「いつ」になる */
+  const stepCountRef = useRef(0);
+  /** 遊んでいる試合の記録。reset() で作り直し、手を打つたびに足し、終わったら結末を付けて外へ出す */
+  const recordRef = useRef<MatchRecord | null>(null);
   const modeRef = useRef<ModeId>('epidemic');
 
   const [mode, setModeState] = useState<ModeId>('epidemic');
@@ -119,6 +135,8 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
   const [hud, setHud] = useState<HudSnapshot>(EMPTY_HUD);
   const [tool, setTool] = useState<ToolId | null>(null);
   const [result, setResult] = useState<GameResult | null>(null);
+  /** 遊び終えた試合の記録。結果画面から写し取れるようにする */
+  const [record, setRecord] = useState<MatchRecord | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const toastId = useRef(0);
@@ -144,9 +162,21 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
     // 乱数の発生源は UI 側に置く。シミュレーション自体は毎回渡されたシードで決定論的に動く
     const seed = Math.floor(Math.random() * 2 ** 32);
     simRef.current = createSim(world, population, modeRef.current, seed);
+    // 同じシードと同じ手から試合を再生できるよう、盤面を決めたものをここで控えておく
+    recordRef.current = {
+      v: 1,
+      build: BUILD_ID,
+      mode: modeRef.current,
+      seed,
+      world: { w: world.w, h: world.h },
+      population,
+      actions: [],
+    };
+    stepCountRef.current = 0;
     previewRef.current = null;
     pointerActiveRef.current = false;
     setResult(null);
+    setRecord(null);
     setNotice(null);
     setHud(snapshot(simRef.current));
   }, []);
@@ -164,7 +194,7 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
 
   const start = useCallback(() => {
     reset();
-    countdownRef.current = CONFIG.countdown;
+    countdownRef.current = createCountdownProgress();
     setCountdown(CONFIG.countdown);
     phaseRef.current = 'countdown';
     setPhase('countdown');
@@ -186,6 +216,9 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
     phaseRef.current = 'finished';
     setPhase('finished');
     setResult(buildResult(sim));
+    // 終わったあとに手は増えない。写しを渡しておけば、次の試合の reset で書き換わる心配もない
+    const rec = recordRef.current;
+    if (rec) setRecord({ ...rec, actions: rec.actions.slice(), result: resultOf(sim) });
     previewRef.current = null;
     toolRef.current = null;
     setTool(null);
@@ -241,16 +274,20 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
       elapsed += dt;
 
       if (phaseRef.current === 'countdown') {
-        drift(sim, dt);
-        countdownRef.current -= dt;
-        const shown = Math.max(0, Math.ceil(countdownRef.current));
+        // 実時間の dt で drift を呼ばない。乱数の消費がフレームレートで変わり、開始時の盤面が試合ごとに違ってしまう。
+        // 固定の刻みで決まった回数だけ進めるので、同じシードなら同じ盤面から始まる
+        const ready = advanceCountdown(sim, countdownRef.current, dt);
+        const shown = countdownDisplay(countdownRef.current.done);
         if (shown !== lastCount) {
           lastCount = shown;
           setCountdown(shown);
         }
-        if (countdownRef.current <= 0) {
+        if (ready) {
           phaseRef.current = 'playing';
           setPhase('playing');
+          // 遊びの側の刻みは、ここから数え直す
+          acc = 0;
+          stepCountRef.current = 0;
           // START の表示だけ少し残してから消す
           window.setTimeout(() => setCountdown(-1), 450);
         }
@@ -260,8 +297,9 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
       } else {
         acc += dt;
         let guard = 0;
-        while (acc >= STEP && guard < 8) {
+        while (acc >= STEP && guard < MAX_STEPS_PER_FRAME) {
           step(sim, STEP);
+          stepCountRef.current += 1;
           acc -= STEP;
           guard += 1;
           // 伝播が0でも終わらせない。時間切れか、手に負えなくなったときだけ終わる
@@ -386,9 +424,22 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
         );
         return;
       }
+      // 手の記録は、エンジンの関数を呼ぶ直前に足す（上の確認で断ったものは残さない）
+      recordRef.current?.actions.push({
+        s: stepCountRef.current,
+        tool: 'isolation',
+        x: preview.x,
+        y: preview.y,
+      });
       // 置けたときの手応えは、盤面のその場に浮かぶ文字で出す（上の通知と二重にしない）
       placeIsolation(sim, preview.x, preview.y);
     } else if (id === 'vaccine') {
+      recordRef.current?.actions.push({
+        s: stepCountRef.current,
+        tool: 'vaccine',
+        x: preview.x,
+        y: preview.y,
+      });
       placeVaccine(sim, preview.x, preview.y);
     }
     setHud(snapshot(sim));
@@ -429,6 +480,7 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
       pushToast(`対策ポイントがあと ${short} 足りません。少し待つと回復します`, 'warn');
       return;
     }
+    recordRef.current?.actions.push({ s: stepCountRef.current, tool: 'lockdown' });
     if (triggerLockdown(sim)) {
       pushToast(`${words.tools.lockdown.label}を発動しました`);
       setHud(snapshot(sim));
@@ -444,6 +496,7 @@ export function useGame(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
     hud,
     tool,
     result,
+    record,
     toasts,
     start,
     backToTitle,

@@ -366,7 +366,9 @@ body {
   padding: 2px 7px;
   border-radius: 4px;
   border: 1px solid;
-  white-space: nowrap;
+  /* 「崩壊まであと…」のような長い札が 320px 幅で横にはみ出さないよう、幅いっぱいで折り返す */
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .badge--bad {
@@ -826,6 +828,40 @@ body {
   color: inherit;
   font-size: 0.98rem;
   font-weight: 600;
+}
+
+/* ---------- 試合の記録のコピー（結果画面の末尾） ---------- */
+
+.record__note {
+  margin: 8px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.record__error {
+  margin: 10px 0 6px;
+  font-size: 0.86rem;
+  line-height: 1.6;
+  color: #ffc9d4;
+}
+
+/* 記録の文字は長い一続きなので、欄の中で折り返して縦に流す。狭い画面でも横にはみ出さない */
+.record__text {
+  display: block;
+  width: 100%;
+  height: 7rem;
+  padding: 8px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 8px;
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text);
+  font-family: var(--mono);
+  /* 16px を下回ると、iPhone の Safari が欄に触れただけで画面を拡大してしまう */
+  font-size: 0.85rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  resize: vertical;
 }
 
 /* ---------- 結果 ---------- */

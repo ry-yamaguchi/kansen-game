@@ -39,6 +39,9 @@ jobs:
       # テストが落ちているものを公開しない
       - run: npm test
       - run: npm run build
+        env:
+          # 遊んだ試合の記録に、どの版で遊んだかを残すため（先頭7文字を使う）
+          VITE_BUILD_ID: ${{ github.sha }}
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
